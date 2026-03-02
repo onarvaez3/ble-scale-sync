@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.2] - 2026-03-02
+
+### Changed
+- **CI**: Docker `latest` tag now only applies to GitHub releases, not every push to main ([#70](https://github.com/KristianP26/ble-scale-sync/pull/70))
+- **CI**: Removed push-to-main Docker build trigger ([#71](https://github.com/KristianP26/ble-scale-sync/pull/71))
+- **Docs**: SEO meta keywords added to all documentation pages ([#69](https://github.com/KristianP26/ble-scale-sync/pull/69))
+- **Docs**: Alternatives page updated with Strava, file export, and ESP32 proxy sections ([#68](https://github.com/KristianP26/ble-scale-sync/pull/68))
+- **Docs**: ESP32 BLE proxy section added to getting started guide ([#67](https://github.com/KristianP26/ble-scale-sync/pull/67))
+
 ## [1.6.1] - 2026-03-01
 
 ### Fixed
@@ -148,6 +157,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Exporter healthchecks at startup
 - 894 unit tests across 49 test files
 
+[1.6.2]: https://github.com/KristianP26/ble-scale-sync/compare/v1.6.1...v1.6.2
+[1.6.1]: https://github.com/KristianP26/ble-scale-sync/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/KristianP26/ble-scale-sync/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/KristianP26/ble-scale-sync/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/KristianP26/ble-scale-sync/compare/v1.3.1...v1.4.0
