@@ -101,7 +101,9 @@ function initializeAdapter(
       };
 
       sendUnlock();
-      unlockInterval = setInterval(() => void sendUnlock(), adapter.unlockIntervalMs);
+      if (adapter.unlockIntervalMs > 0) {
+        unlockInterval = setInterval(() => void sendUnlock(), adapter.unlockIntervalMs);
+      }
     }
   };
 
