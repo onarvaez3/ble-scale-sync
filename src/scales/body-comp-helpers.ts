@@ -71,7 +71,7 @@ export function buildPayload(
   if (comp.visceralFat != null) {
     visceralFat = Math.max(1, Math.min(Math.trunc(comp.visceralFat), 59));
   } else if (bodyFatPercent > 10) {
-    visceralFat = Math.max(1, Math.min(Math.trunc(bodyFatPercent * 0.55 - 4 + p.age * 0.08), 59));
+    visceralFat = Math.max(1, Math.min(Math.trunc(bodyFatPercent * 0.55 - 4 + p.age * 0.08 + (p.gender === 'male' ? 2.5 : 0)), 59));
   } else {
     visceralFat = 1;
   }
@@ -82,8 +82,8 @@ export function buildPayload(
   let bmr = baseBmr + (p.gender === 'male' ? 5 : -161);
   if (p.isAthlete) bmr *= 1.05;
 
-  const idealBmr = 10 * weight + 6.25 * p.height - 5 * 25 + 5;
-  let metabolicAge = p.age + Math.trunc((idealBmr - bmr) / 15);
+  const idealBmr = 10 * weight + 6.25 * p.height - 5 * 25 + (p.gender === 'male' ? 5 : -161);
+  let metabolicAge = p.age + Math.trunc((idealBmr - bmr) / 5);
   if (metabolicAge < 12) metabolicAge = 12;
   if (p.isAthlete && metabolicAge > p.age) metabolicAge = p.age - 5;
 

@@ -280,8 +280,8 @@ describe('buildPayload()', () => {
     const bmr = baseBmr + 5; // male offset
     expect(p.bmr).toBe(Math.trunc(bmr));
 
-    const idealBmr = 10 * 80 + 6.25 * 183 - 5 * 25 + 5;
-    const metabolicAge = 30 + Math.trunc((idealBmr - bmr) / 15);
+    const idealBmr = 10 * 80 + 6.25 * 183 - 5 * 25 + 5; // male: +5
+    const metabolicAge = 30 + Math.trunc((idealBmr - bmr) / 5);
     expect(p.metabolicAge).toBe(metabolicAge);
   });
 });
