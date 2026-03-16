@@ -3,6 +3,7 @@ import {
   r2,
   uuid16,
   xorChecksum,
+  estimateLBM,
   estimateBodyFat,
   computePhysiqueRating,
   computeBiaFat,
@@ -55,59 +56,19 @@ describe('xorChecksum()', () => {
 });
 
 describe('estimateBodyFat()', () => {
-  const maleNonAthlete: UserProfile = {
-    height: 183,
-    age: 30,
-    gender: 'male',
-    isAthlete: false,
-  };
-
-  const femaleAthlete: UserProfile = {
-    height: 165,
-    age: 25,
-    gender: 'female',
-    isAthlete: true,
-  };
-
-  it('computes male non-athlete body fat', () => {
-    const bmi = 80 / (1.83 * 1.83); // ~23.89
-    const expected = 1.2 * bmi + 0.23 * 30 - 10.8 * 1 - 5.4;
-    expect(estimateBodyFat(bmi, maleNonAthlete)).toBeCloseTo(expected, 5);
-  });
-
-  it('applies 0.85 modifier for female athlete', () => {
-    const bmi = 65 / (1.65 * 1.65); // ~23.88
-    const raw = 1.2 * bmi + 0.23 * 25 - 10.8 * 0 - 5.4;
-    const expected = raw * 0.85;
-    expect(estimateBodyFat(bmi, femaleAthlete)).toBeCloseTo(expected, 5);
+  it('computes body fat from LBM', () => {
+    // weight=80, lbm=64 → fat = (80-64)/80 * 100 = 20%
+    expect(estimateBodyFat(80, 64)).toBeCloseTo(20, 5);
   });
 
   it('clamps to minimum 3%', () => {
-    // Very low BMI and young male → could produce negative/very low value
-    const profile: UserProfile = {
-      height: 180,
-      age: 15,
-      gender: 'male',
-      isAthlete: true,
-    };
-    // bmi=14 extremely underweight
-    // raw = (1.2 * 14 + 0.23 * 15 - 10.8 * 1 - 5.4) * 0.85 = 3.4425
-    // raw = (16.8 + 3.45 - 10.8 - 5.4) * 0.85 = 4.05 * 0.85 = 3.4425
-    // Actually still above 3, use bmi=10
-    const result = estimateBodyFat(10, profile);
-    // raw = (12 + 3.45 - 10.8 - 5.4) * 0.85 = -0.75 * 0.85 = -0.6375 → clamped to 3
-    expect(result).toBe(3);
+    // lbm nearly equal to weight → fat < 3%
+    expect(estimateBodyFat(80, 79)).toBe(3);
   });
 
   it('clamps to maximum 60%', () => {
-    const profile: UserProfile = {
-      height: 150,
-      age: 80,
-      gender: 'female',
-      isAthlete: false,
-    };
-    // bmi=55, raw = 1.2 * 55 + 0.23 * 80 - 10.8 * 0 - 5.4 = 79 → clamped to 60
-    expect(estimateBodyFat(55, profile)).toBe(60);
+    // lbm = 50% floor → fat = 50%, but extreme case: lbm=20 on weight=80 → 75% → clamped
+    expect(estimateBodyFat(80, 20)).toBe(60);
   });
 });
 
@@ -238,13 +199,13 @@ describe('buildPayload()', () => {
 
     const heightM = 183 / 100;
     const bmi = 80 / (heightM * heightM);
-    const estimatedFat = estimateBodyFat(bmi, profile);
+    // impedance=500 > 0 → uses estimateLBM path
+    const lbm = estimateLBM(80, 183, 500, profile);
+    const estimatedFat = estimateBodyFat(80, lbm);
 
     expect(p.bmi).toBe(r2(bmi));
     expect(p.bodyFatPercent).toBe(r2(estimatedFat));
 
-    // waterPercent is estimated from lbm
-    const lbm = 80 * (1 - estimatedFat / 100);
     expect(p.waterPercent).toBe(r2(((lbm * 0.73) / 80) * 100));
     expect(p.boneMass).toBe(r2(lbm * 0.042));
     expect(p.muscleMass).toBe(r2(lbm * 0.54));
@@ -280,8 +241,10 @@ describe('buildPayload()', () => {
     const bmr = baseBmr + 5; // male offset
     expect(p.bmr).toBe(Math.trunc(bmr));
 
-    const idealBmr = 10 * 80 + 6.25 * 183 - 5 * 25 + 5; // male: +5
-    const metabolicAge = 30 + Math.trunc((idealBmr - bmr) / 5);
+    // impedance=500 > 0 → uses estimateLBM path
+    const lbm = estimateLBM(80, 183, 500, profile);
+    const actualBmr = 370 + 21.6 * lbm;
+    const metabolicAge = Math.round((10 * 80 + 6.25 * 183 + 5 - actualBmr) / 5);
     expect(p.metabolicAge).toBe(metabolicAge);
   });
 });

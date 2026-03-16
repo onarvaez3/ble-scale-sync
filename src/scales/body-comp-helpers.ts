@@ -8,6 +8,9 @@
  */
 
 import type { UserProfile, BodyComposition } from '../interfaces/scale-adapter.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Calc');
 
 export interface ScaleBodyComp {
   fat?: number; // %
@@ -57,8 +60,24 @@ export function buildPayload(
   const heightM = p.height / 100;
   const bmi = weight / (heightM * heightM);
 
-  const bodyFatPercent = comp.fat ?? estimateBodyFat(bmi, p);
-  const lbm = weight * (1 - bodyFatPercent / 100);
+  let bodyFatPercent: number;
+  let lbm: number;
+  if (comp.fat != null) {
+    bodyFatPercent = comp.fat;
+    lbm = weight * (1 - bodyFatPercent / 100);
+    log.info(`fat/LBM source: scale (comp.fat=${comp.fat}%)`);
+  } else if (impedance > 0) {
+    lbm = estimateLBM(weight, p.height, impedance, p);
+    bodyFatPercent = estimateBodyFat(weight, lbm);
+    log.info(`fat/LBM source: impedance — lbm=${r2(lbm)} kg, bodyFat=${r2(bodyFatPercent)}%`);
+    const fallbackBf = deurenbergBodyFat(bmi, p);
+    const fallbackLbm = weight * (1 - fallbackBf / 100);
+    log.info(`fat/LBM fallback (Deurenberg, unused) — lbm=${r2(fallbackLbm)} kg, bodyFat=${r2(fallbackBf)}%`);
+  } else {
+    bodyFatPercent = deurenbergBodyFat(bmi, p);
+    lbm = weight * (1 - bodyFatPercent / 100);
+    log.info(`fat/LBM source: Deurenberg fallback — lbm=${r2(lbm)} kg, bodyFat=${r2(bodyFatPercent)}%`);
+  }
 
   const waterPercent = comp.water ?? ((lbm * (p.isAthlete ? 0.74 : 0.73)) / weight) * 100;
 
@@ -78,12 +97,13 @@ export function buildPayload(
 
   const physiqueRating = computePhysiqueRating(bodyFatPercent, muscleMass, weight);
 
+  const s = p.gender === 'male' ? 5 : -161;
   const baseBmr = 10 * weight + 6.25 * p.height - 5 * p.age;
-  let bmr = baseBmr + (p.gender === 'male' ? 5 : -161);
+  let bmr = baseBmr + s;
   if (p.isAthlete) bmr *= 1.05;
 
-  const idealBmr = 10 * weight + 6.25 * p.height - 5 * 25 + (p.gender === 'male' ? 5 : -161);
-  let metabolicAge = p.age + Math.trunc((idealBmr - bmr) / 5);
+  const actualBmr = 370 + 21.6 * lbm; // Katch-McArdle: LBM-based actual BMR
+  let metabolicAge = Math.round((10 * weight + 6.25 * p.height + s - actualBmr) / 5);
   if (metabolicAge < 12) metabolicAge = 12;
   if (p.isAthlete && metabolicAge > p.age) metabolicAge = p.age - 5;
 
@@ -102,8 +122,25 @@ export function buildPayload(
   };
 }
 
-/** Deurenberg formula — fallback when no scale body-fat is available. */
-export function estimateBodyFat(bmi: number, p: UserProfile): number {
+/** BIA-based LBM estimation. Used when the scale reports raw impedance. */
+export function estimateLBM(weight: number, heightCm: number, impedance: number, p: UserProfile): number {
+  let lbm: number;
+  if (p.gender === 'male') {
+    lbm = 0.00066360 * heightCm ** 2 - 0.02117 * impedance + 0.62854 * weight - 0.12380 * p.age + 9.33285;
+  } else {
+    lbm = 0.00088580 * heightCm ** 2 - 0.02999 * impedance + 0.42688 * weight - 0.07002 * p.age + 14.52435;
+  }
+  return Math.max(lbm, weight * 0.5);
+}
+
+/** Body fat % derived from LBM, clamped to [3, 60]. */
+export function estimateBodyFat(weight: number, lbm: number): number {
+  const bf = ((weight - lbm) / weight) * 100;
+  return Math.max(3, Math.min(bf, 60));
+}
+
+/** Deurenberg formula — BMI-based fallback when impedance is unavailable. */
+function deurenbergBodyFat(bmi: number, p: UserProfile): number {
   const sexFactor = p.gender === 'male' ? 1 : 0;
   let bf = 1.2 * bmi + 0.23 * p.age - 10.8 * sexFactor - 5.4;
   if (p.isAthlete) bf *= 0.85;
