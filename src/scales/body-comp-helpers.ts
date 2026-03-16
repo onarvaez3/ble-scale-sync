@@ -8,9 +8,6 @@
  */
 
 import type { UserProfile, BodyComposition } from '../interfaces/scale-adapter.js';
-import { createLogger } from '../logger.js';
-
-const log = createLogger('Calc');
 
 export interface ScaleBodyComp {
   fat?: number; // %
@@ -65,18 +62,9 @@ export function buildPayload(
   if (comp.fat != null) {
     bodyFatPercent = comp.fat;
     lbm = weight * (1 - bodyFatPercent / 100);
-    log.info(`fat/LBM source: scale (comp.fat=${comp.fat}%)`);
-  } else if (impedance > 0) {
-    lbm = estimateLBM(weight, p.height, impedance, p);
-    bodyFatPercent = bodyFatFromLBM(weight, lbm);
-    log.info(`fat/LBM source: impedance — lbm=${r2(lbm)} kg, bodyFat=${r2(bodyFatPercent)}%`);
-    const fallbackBf = estimateBodyFat(bmi, p);
-    const fallbackLbm = weight * (1 - fallbackBf / 100);
-    log.info(`fat/LBM fallback (Deurenberg, unused) — lbm=${r2(fallbackLbm)} kg, bodyFat=${r2(fallbackBf)}%`);
   } else {
     bodyFatPercent = estimateBodyFat(bmi, p);
     lbm = weight * (1 - bodyFatPercent / 100);
-    log.info(`fat/LBM source: Deurenberg fallback — lbm=${r2(lbm)} kg, bodyFat=${r2(bodyFatPercent)}%`);
   }
 
   const waterPercent = comp.water ?? ((lbm * (p.isAthlete ? 0.74 : 0.73)) / weight) * 100;
