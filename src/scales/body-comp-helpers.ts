@@ -68,13 +68,13 @@ export function buildPayload(
     log.info(`fat/LBM source: scale (comp.fat=${comp.fat}%)`);
   } else if (impedance > 0) {
     lbm = estimateLBM(weight, p.height, impedance, p);
-    bodyFatPercent = estimateBodyFat(weight, lbm);
+    bodyFatPercent = bodyFatFromLBM(weight, lbm);
     log.info(`fat/LBM source: impedance — lbm=${r2(lbm)} kg, bodyFat=${r2(bodyFatPercent)}%`);
-    const fallbackBf = deurenbergBodyFat(bmi, p);
+    const fallbackBf = estimateBodyFat(bmi, p);
     const fallbackLbm = weight * (1 - fallbackBf / 100);
     log.info(`fat/LBM fallback (Deurenberg, unused) — lbm=${r2(fallbackLbm)} kg, bodyFat=${r2(fallbackBf)}%`);
   } else {
-    bodyFatPercent = deurenbergBodyFat(bmi, p);
+    bodyFatPercent = estimateBodyFat(bmi, p);
     lbm = weight * (1 - bodyFatPercent / 100);
     log.info(`fat/LBM source: Deurenberg fallback — lbm=${r2(lbm)} kg, bodyFat=${r2(bodyFatPercent)}%`);
   }
@@ -134,13 +134,13 @@ export function estimateLBM(weight: number, heightCm: number, impedance: number,
 }
 
 /** Body fat % derived from LBM, clamped to [3, 60]. */
-export function estimateBodyFat(weight: number, lbm: number): number {
+export function bodyFatFromLBM(weight: number, lbm: number): number {
   const bf = ((weight - lbm) / weight) * 100;
   return Math.max(3, Math.min(bf, 60));
 }
 
 /** Deurenberg formula — BMI-based fallback when impedance is unavailable. */
-function deurenbergBodyFat(bmi: number, p: UserProfile): number {
+export function estimateBodyFat(bmi: number, p: UserProfile): number {
   const sexFactor = p.gender === 'male' ? 1 : 0;
   let bf = 1.2 * bmi + 0.23 * p.age - 10.8 * sexFactor - 5.4;
   if (p.isAthlete) bf *= 0.85;
