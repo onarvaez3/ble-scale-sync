@@ -2,8 +2,8 @@
 
 import { parseArgs } from 'node:util';
 import { writeFileSync } from 'node:fs';
-import { scanAndReadRaw } from './ble/index.js';
-import type { RawReading } from './ble/index.js';
+import { scanAndReadRaw, createBleSession, destroyBleSession } from './ble/index.js';
+import type { RawReading, BleSession } from './ble/index.js';
 import { abortableSleep } from './ble/types.js';
 import { adapters } from './scales/index.js';
 import { createLogger } from './logger.js';
@@ -208,7 +208,7 @@ async function processSingleReading(raw: RawReading, exporters?: Exporter[]): Pr
   return success;
 }
 
-async function runSingleUserCycle(exporters?: Exporter[]): Promise<boolean> {
+async function runSingleUserCycle(exporters?: Exporter[], session?: BleSession): Promise<boolean> {
   const { profile } = resolveForSingleUser(appConfig);
 
   const raw = await scanAndReadRaw({
@@ -217,6 +217,7 @@ async function runSingleUserCycle(exporters?: Exporter[]): Promise<boolean> {
     profile,
     weightUnit,
     abortSignal: signal,
+    session,
     onLiveData(reading) {
       const impStr: string = reading.impedance > 0 ? `${reading.impedance} Ohm` : 'Measuring...';
       process.stdout.write(
@@ -288,7 +289,7 @@ async function processRawReading(raw: RawReading): Promise<boolean> {
 
 // ─── Multi-user cycle ───────────────────────────────────────────────────────
 
-async function runMultiUserCycle(): Promise<boolean> {
+async function runMultiUserCycle(session?: BleSession): Promise<boolean> {
   // Use first user's profile for BLE connection (needed by some adapters for onConnected)
   const defaultProfile = resolveUserProfile(appConfig.users[0], appConfig.scale);
 
@@ -298,6 +299,7 @@ async function runMultiUserCycle(): Promise<boolean> {
     profile: defaultProfile,
     weightUnit,
     abortSignal: signal,
+    session,
     onLiveData(reading) {
       const impStr: string = reading.impedance > 0 ? `${reading.impedance} Ohm` : 'Measuring...';
       process.stdout.write(
@@ -344,44 +346,51 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Continuous mode loop with exponential backoff on failures
+  // Continuous mode: keep a single D-Bus session alive across all scan cycles.
+  // This avoids tearing down and rebuilding the BlueZ connection each time,
+  // which eliminates alternating le-connection-abort-by-local failures.
+  const bleSession = await createBleSession();
   const BACKOFF_INITIAL_MS = 5_000;
   const BACKOFF_MAX_MS = 10_000;
   let backoffMs = 0; // 0 = no failure yet
 
-  while (!signal.aborted) {
-    try {
-      touchHeartbeat();
+  try {
+    while (!signal.aborted) {
+      try {
+        touchHeartbeat();
 
-      if (needsReload) {
-        await reloadConfig();
-        needsReload = false;
-        // Rebuild single-user exporters after reload
-        if (appConfig.users.length === 1 && !dryRun) {
-          exporters = buildSingleUserExporters();
+        if (needsReload) {
+          await reloadConfig();
+          needsReload = false;
+          // Rebuild single-user exporters after reload
+          if (appConfig.users.length === 1 && !dryRun) {
+            exporters = buildSingleUserExporters();
+          }
         }
+
+        if (appConfig.users.length > 1) {
+          await runMultiUserCycle(bleSession);
+        } else {
+          await runSingleUserCycle(exporters, bleSession);
+        }
+
+        backoffMs = 0; // Reset backoff on success
+
+        if (signal.aborted) break;
+        const cooldown = appConfig.runtime?.scan_cooldown ?? scanCooldownSec;
+        log.info(`\nWaiting ${cooldown}s before next scan...`);
+        await abortableSleep(cooldown * 1000, signal);
+      } catch (err) {
+        if (signal.aborted) break;
+
+        // Exponential backoff: 5s → 10s (cap)
+        backoffMs = backoffMs === 0 ? BACKOFF_INITIAL_MS : Math.min(backoffMs * 2, BACKOFF_MAX_MS);
+        log.info(`No scale found, retrying in ${backoffMs / 1000}s... (${errMsg(err)})`);
+        await abortableSleep(backoffMs, signal).catch(() => {});
       }
-
-      if (appConfig.users.length > 1) {
-        await runMultiUserCycle();
-      } else {
-        await runSingleUserCycle(exporters);
-      }
-
-      backoffMs = 0; // Reset backoff on success
-
-      if (signal.aborted) break;
-      const cooldown = appConfig.runtime?.scan_cooldown ?? scanCooldownSec;
-      log.info(`\nWaiting ${cooldown}s before next scan...`);
-      await abortableSleep(cooldown * 1000, signal);
-    } catch (err) {
-      if (signal.aborted) break;
-
-      // Exponential backoff: 5s → 10s (cap)
-      backoffMs = backoffMs === 0 ? BACKOFF_INITIAL_MS : Math.min(backoffMs * 2, BACKOFF_MAX_MS);
-      log.info(`No scale found, retrying in ${backoffMs / 1000}s... (${errMsg(err)})`);
-      await abortableSleep(backoffMs, signal).catch(() => {});
     }
+  } finally {
+    await destroyBleSession(bleSession);
   }
 
   log.info('Stopped.');

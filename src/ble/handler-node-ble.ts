@@ -1,6 +1,6 @@
 import NodeBle from 'node-ble';
 import type { ScaleAdapter, BleDeviceInfo, BodyComposition } from '../interfaces/scale-adapter.js';
-import type { ScanOptions, ScanResult } from './types.js';
+import type { ScanOptions, ScanResult, BleSession } from './types.js';
 import type { BleChar, BleDevice, RawReading } from './shared.js';
 import { waitForRawReading } from './shared.js';
 import {
@@ -443,6 +443,26 @@ async function probeMatchAndBuildCharMap(
   return null;
 }
 
+// ─── Session management ──────────────────────────────────────────────────────
+
+/**
+ * Create a reusable D-Bus / BlueZ session.
+ * Keep one session alive across multiple scan cycles in continuous mode
+ * to avoid the overhead (and BlueZ state issues) of tearing down and
+ * rebuilding the D-Bus connection on every cycle.
+ */
+export function createBleSession(): BleSession {
+  const { bluetooth, destroy } = NodeBle.createBluetooth();
+  bleLog.debug('Created reusable BLE session');
+  return { _bluetooth: bluetooth, _destroy: destroy };
+}
+
+/** Tear down a reusable BLE session. */
+export function destroyBleSession(session: BleSession): void {
+  bleLog.debug('Destroying BLE session');
+  session._destroy();
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 /**
@@ -450,15 +470,23 @@ async function probeMatchAndBuildCharMap(
  * Uses node-ble (BlueZ D-Bus) — requires bluetoothd running on Linux.
  */
 export async function scanAndReadRaw(opts: ScanOptions): Promise<RawReading> {
-  const { targetMac, adapters, profile, weightUnit, onLiveData, abortSignal } = opts;
+  const { targetMac, adapters, profile, weightUnit, onLiveData, abortSignal, session } = opts;
 
+  // Use provided session or create a temporary one
   let bluetooth: NodeBle.Bluetooth;
   let destroy: () => void;
-  try {
-    ({ bluetooth, destroy } = NodeBle.createBluetooth());
-  } catch (err) {
-    if (isDbusConnectionError(err)) throw dbusError();
-    throw err;
+  const ownsSession = !session;
+
+  if (session) {
+    bluetooth = session._bluetooth as NodeBle.Bluetooth;
+    destroy = () => {}; // Caller owns the lifecycle
+  } else {
+    try {
+      ({ bluetooth, destroy } = NodeBle.createBluetooth());
+    } catch (err) {
+      if (isDbusConnectionError(err)) throw dbusError();
+      throw err;
+    }
   }
 
   let device: Device | null = null;
@@ -654,7 +682,7 @@ export async function scanAndReadRaw(opts: ScanOptions): Promise<RawReading> {
         /* may already be stopped */
       }
     }
-    destroy();
+    if (ownsSession) destroy();
   }
 }
 

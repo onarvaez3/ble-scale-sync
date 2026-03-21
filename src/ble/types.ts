@@ -21,6 +21,18 @@ export const POST_DISCOVERY_QUIESCE_MS = 500;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/**
+ * Opaque handle to a reusable D-Bus / BlueZ session.
+ * Create with `createBleSession()`, destroy with `destroyBleSession()`.
+ * Passing a session to `scanAndReadRaw` avoids tearing down and rebuilding
+ * the D-Bus connection on every scan cycle, which eliminates alternating
+ * `le-connection-abort-by-local` failures on some BlueZ stacks.
+ */
+export interface BleSession {
+  /** @internal */ _bluetooth: unknown;
+  /** @internal */ _destroy: () => void;
+}
+
 export interface ScanOptions {
   targetMac?: string;
   adapters: ScaleAdapter[];
@@ -28,6 +40,8 @@ export interface ScanOptions {
   weightUnit?: WeightUnit;
   onLiveData?: (reading: ScaleReading) => void;
   abortSignal?: AbortSignal;
+  /** Reusable D-Bus session. If provided, the session is NOT destroyed after the scan. */
+  session?: BleSession;
 }
 
 export interface ScanResult {
