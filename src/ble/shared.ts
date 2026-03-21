@@ -180,6 +180,8 @@ async function subscribeAndInit(
 export interface RawReading {
   reading: ScaleReading;
   adapter: ScaleAdapter;
+  /** Battery level (0–100%) read from the standard BLE Battery Service, if available. */
+  batteryLevel?: number;
 }
 
 /**

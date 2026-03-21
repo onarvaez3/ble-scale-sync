@@ -393,6 +393,56 @@ async function buildCharMapFast(
   return charMap;
 }
 
+/**
+ * Probe-based adapter matching: directly accesses each adapter's known service
+ * UUID without calling gatt.services() first. This skips the ~2s GATT service
+ * enumeration round-trip, allowing the notification subscription to be active
+ * significantly sooner after connection.
+ *
+ * Returns the matched adapter and its pre-built charMap, or null if no adapter
+ * with a serviceUuid matched (falls back to full gatt.services() enumeration).
+ */
+async function probeMatchAndBuildCharMap(
+  gatt: NodeBle.GattServer,
+  adapters: ScaleAdapter[],
+): Promise<{ adapter: ScaleAdapter; charMap: Map<string, BleChar> } | null> {
+  for (const adapter of adapters.filter((a) => a.serviceUuid)) {
+    try {
+      const service = await gatt.getPrimaryService(adapter.serviceUuid!);
+      const charUuids = await service.characteristics();
+      if (charUuids.length === 0) continue;
+
+      bleLog.debug(
+        `Probe: ${adapter.name} service=${adapter.serviceUuid} chars=[${charUuids.join(', ')}]`,
+      );
+
+      const wanted = new Set<string>([
+        normalizeUuid(adapter.charNotifyUuid),
+        normalizeUuid(adapter.charWriteUuid),
+        ...(adapter.altCharNotifyUuid ? [normalizeUuid(adapter.altCharNotifyUuid)] : []),
+        ...(adapter.altCharWriteUuid ? [normalizeUuid(adapter.altCharWriteUuid)] : []),
+        ...(adapter.characteristics?.map((b) => normalizeUuid(b.uuid)) ?? []),
+      ]);
+
+      const charMap = new Map<string, BleChar>();
+      for (const charUuid of charUuids) {
+        if (!wanted.has(normalizeUuid(charUuid))) continue;
+        try {
+          const char = await service.getCharacteristic(charUuid);
+          charMap.set(normalizeUuid(charUuid), wrapChar(char));
+        } catch (e: unknown) {
+          bleLog.debug(`  Char ${charUuid}: error=${errMsg(e)}`);
+        }
+      }
+
+      if (charMap.size > 0) return { adapter, charMap };
+    } catch {
+      // Service not present on this device — try next adapter
+    }
+  }
+  return null;
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 /**
@@ -444,6 +494,8 @@ export async function scanAndReadRaw(opts: ScanOptions): Promise<RawReading> {
     // Retain the GattServer obtained during adapter matching so it can be
     // reused for characteristic setup without a second D-Bus round-trip.
     let discoveryGatt: NodeBle.GattServer | null = null;
+    // charMap pre-built by probe matching (skips the separate buildCharMap step).
+    let prebuiltCharMap: Map<string, BleChar> | null = null;
 
     if (targetMac) {
       const mac = formatMac(targetMac);
@@ -498,25 +550,35 @@ export async function scanAndReadRaw(opts: ScanOptions): Promise<RawReading> {
       });
       bleLog.info('Connected. Discovering services...');
 
-      // Match adapter using device name + GATT service UUIDs (post-connect)
+      // Try probe-based matching first: directly accesses the adapter's known
+      // service UUID without the ~2s gatt.services() round-trip. Falls back to
+      // full service enumeration if no adapter with serviceUuid matches.
       discoveryGatt = await device.gatt();
-      const serviceUuids = await discoveryGatt.services();
-      bleLog.debug(`Services: [${serviceUuids.join(', ')}]`);
+      const probe = await probeMatchAndBuildCharMap(discoveryGatt, adapters);
 
-      const info: BleDeviceInfo = {
-        localName: name,
-        serviceUuids: serviceUuids.map(normalizeUuid),
-      };
-      const found = adapters.find((a) => a.matches(info));
-      if (!found) {
-        throw new Error(
-          `Device found (${name}) but no adapter recognized it. ` +
-            `Services: [${serviceUuids.join(', ')}]. ` +
-            `Adapters: ${adapters.map((a) => a.name).join(', ')}`,
-        );
+      if (probe) {
+        matchedAdapter = probe.adapter;
+        prebuiltCharMap = probe.charMap;
+        bleLog.info(`Matched adapter: ${matchedAdapter.name} (probe)`);
+      } else {
+        const serviceUuids = await discoveryGatt.services();
+        bleLog.debug(`Services: [${serviceUuids.join(', ')}]`);
+
+        const info: BleDeviceInfo = {
+          localName: name,
+          serviceUuids: serviceUuids.map(normalizeUuid),
+        };
+        const found = adapters.find((a) => a.matches(info));
+        if (!found) {
+          throw new Error(
+            `Device found (${name}) but no adapter recognized it. ` +
+              `Services: [${serviceUuids.join(', ')}]. ` +
+              `Adapters: ${adapters.map((a) => a.name).join(', ')}`,
+          );
+        }
+        matchedAdapter = found;
+        bleLog.info(`Matched adapter: ${matchedAdapter.name}`);
       }
-      matchedAdapter = found;
-      bleLog.info(`Matched adapter: ${matchedAdapter.name}`);
     } else {
       // Auto-discovery: poll discovered devices, match by name, connect, verify
       const result = await autoDiscover(btAdapter, adapters, abortSignal);
@@ -536,17 +598,17 @@ export async function scanAndReadRaw(opts: ScanOptions): Promise<RawReading> {
       bleLog.info('Connected. Discovering services...');
     }
 
-    // Reuse the GattServer from service discovery when available (targetMac path),
-    // otherwise open a new one. Then build the characteristic map — using the fast
-    // path when the adapter declares its serviceUuid (avoids enumerating all services).
+    // Use the charMap from probe matching if available; otherwise build it now.
     const gatt = discoveryGatt ?? (await device.gatt());
-    const charMap = await withTimeout(
-      matchedAdapter.serviceUuid
-        ? buildCharMapFast(gatt, matchedAdapter)
-        : buildCharMap(gatt),
-      GATT_DISCOVERY_TIMEOUT_MS,
-      'GATT service discovery timed out',
-    );
+    const charMap =
+      prebuiltCharMap ??
+      (await withTimeout(
+        matchedAdapter.serviceUuid
+          ? buildCharMapFast(gatt, matchedAdapter)
+          : buildCharMap(gatt),
+        GATT_DISCOVERY_TIMEOUT_MS,
+        'GATT service discovery timed out',
+      ));
     const raw = await waitForRawReading(
       charMap,
       wrapDevice(device),
@@ -555,6 +617,23 @@ export async function scanAndReadRaw(opts: ScanOptions): Promise<RawReading> {
       weightUnit,
       onLiveData,
     );
+
+    // Read battery level from the standard BLE Battery Service (0x180F / 0x2A19).
+    // Done after measurement to avoid adding latency to the critical subscription path.
+    try {
+      const batteryService = await gatt.getPrimaryService(
+        '0000180f-0000-1000-8000-00805f9b34fb',
+      );
+      await batteryService.characteristics();
+      const batteryChar = await batteryService.getCharacteristic(
+        '00002a19-0000-1000-8000-00805f9b34fb',
+      );
+      const batteryData = await batteryChar.readValue();
+      raw.batteryLevel = batteryData[0];
+      bleLog.debug(`Battery: ${raw.batteryLevel}%`);
+    } catch {
+      // Battery service not present on this device — skip silently
+    }
 
     try {
       await device.disconnect();

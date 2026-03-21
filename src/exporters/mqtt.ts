@@ -176,9 +176,27 @@ export class MqttExporter implements Exporter {
       await client.publishAsync(topic, JSON.stringify(payload), { qos: 1, retain: true });
     }
 
+    // Battery level — device diagnostic, not body composition
+    await client.publishAsync(
+      `homeassistant/sensor/${deviceId}/batteryLevel/config`,
+      JSON.stringify({
+        name: 'Battery',
+        unique_id: `${deviceId}_batteryLevel`,
+        state_topic: dataTopic,
+        value_template: '{{ value_json.batteryLevel }}',
+        unit_of_measurement: '%',
+        device_class: 'battery',
+        state_class: 'measurement',
+        entity_category: 'diagnostic',
+        availability: [{ topic: statusTopic }],
+        device,
+      }),
+      { qos: 1, retain: true },
+    );
+
     await client.publishAsync(statusTopic, 'online', { qos: 1, retain: true });
     const suffix = slug ? ` (user: ${slug})` : '';
-    log.info(`Published HA discovery for ${HA_METRICS.length} metrics${suffix}.`);
+    log.info(`Published HA discovery for ${HA_METRICS.length + 1} metrics${suffix}.`);
   }
 
   async healthcheck(): Promise<ExportResult> {
@@ -247,7 +265,10 @@ export class MqttExporter implements Exporter {
             await this.publishDiscovery(client, context);
           }
 
-          const payload = JSON.stringify(data);
+          const payload = JSON.stringify({
+            ...data,
+            ...(context?.batteryLevel !== undefined ? { batteryLevel: context.batteryLevel } : {}),
+          });
           await client.publishAsync(dataTopic, payload, { qos, retain });
           log.info(`Published to ${dataTopic} (qos=${qos}, retain=${retain}).`);
           return { success: true };

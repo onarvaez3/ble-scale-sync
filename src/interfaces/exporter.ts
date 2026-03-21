@@ -11,6 +11,8 @@ export interface ExportContext {
   userSlug?: string;
   userConfig?: UserConfig;
   driftWarning?: string;
+  /** Battery level (0–100%) from the scale's BLE Battery Service, if available. */
+  batteryLevel?: number;
 }
 
 export interface Exporter {

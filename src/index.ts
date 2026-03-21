@@ -220,6 +220,7 @@ async function processSingleReading(raw: RawReading, exporters?: Exporter[]): Pr
     userName: user.name,
     userSlug: user.slug,
     userConfig: user,
+    ...(raw.batteryLevel !== undefined ? { batteryLevel: raw.batteryLevel } : {}),
   };
 
   const { success, details } = await dispatchExports(exporters, payload, context);
@@ -319,6 +320,7 @@ async function processRawReading(raw: RawReading): Promise<boolean> {
     userSlug: user.slug,
     userConfig: user,
     ...(drift ? { driftWarning: drift } : {}),
+    ...(raw.batteryLevel !== undefined ? { batteryLevel: raw.batteryLevel } : {}),
   };
 
   const { success, details } = await dispatchExports(exporters, payload, context);
