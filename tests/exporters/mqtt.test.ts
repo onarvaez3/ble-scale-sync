@@ -143,8 +143,8 @@ describe('MqttExporter', () => {
       const exporter = new MqttExporter(config);
       await exporter.export(samplePayload);
 
-      // 11 discovery topics + 1 status publish + 1 data topic = 13 publishAsync calls
-      expect(mockPublishAsync).toHaveBeenCalledTimes(13);
+      // 12 discovery topics + 1 status publish + 1 data topic = 14 publishAsync calls
+      expect(mockPublishAsync).toHaveBeenCalledTimes(14);
 
       // First call should be a discovery config topic
       const firstCall = mockPublishAsync.mock.calls[0];
@@ -152,12 +152,12 @@ describe('MqttExporter', () => {
       expect(firstCall[2]).toEqual({ qos: 1, retain: true });
 
       // Second to last call should be the status publish
-      const statusCall = mockPublishAsync.mock.calls[11];
+      const statusCall = mockPublishAsync.mock.calls[12];
       expect(statusCall[0]).toBe('scale/body-composition/status');
       expect(statusCall[1]).toBe('online');
 
       // Last call should be the actual data
-      const lastCall = mockPublishAsync.mock.calls[12];
+      const lastCall = mockPublishAsync.mock.calls[13];
       expect(lastCall[0]).toBe('scale/body-composition');
       expect(lastCall[1]).toBe(JSON.stringify(samplePayload));
     });
@@ -225,7 +225,7 @@ describe('MqttExporter', () => {
       const discoveryCalls = mockPublishAsync.mock.calls.filter((c: unknown[]) =>
         (c[0] as string).startsWith('homeassistant/'),
       );
-      expect(discoveryCalls.length).toBe(11);
+      expect(discoveryCalls.length).toBe(12);
 
       const devices = discoveryCalls.map((c: unknown[]) => JSON.parse(c[1] as string).device);
       // All device objects should be identical
@@ -253,8 +253,8 @@ describe('MqttExporter', () => {
       const exporter = new MqttExporter(config);
       await exporter.export(samplePayload);
 
-      // Call index 11 (after 11 discovery payloads) should be the status publish
-      const statusCall = mockPublishAsync.mock.calls[11];
+      // Call index 12 (after 12 discovery payloads) should be the status publish
+      const statusCall = mockPublishAsync.mock.calls[12];
       expect(statusCall[0]).toBe('scale/body-composition/status');
       expect(statusCall[1]).toBe('online');
       expect(statusCall[2]).toEqual({ qos: 1, retain: true });

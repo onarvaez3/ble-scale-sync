@@ -34,7 +34,7 @@ const appConfig: AppConfig = {
   unknown_user: 'nearest',
   users: [dad, mom],
   global_exporters: [
-    { type: 'influxdb', url: 'http://localhost:8086', token: 't', org: 'o', bucket: 'b' },
+    { type: 'mqtt', broker_url: 'mqtt://localhost:1883' },
   ],
 };
 
@@ -131,59 +131,22 @@ describe('Multi-user flow: per-user exporter resolution', () => {
   it('resolves global exporters for a user without per-user exporters', () => {
     const entries = resolveExportersForUser(appConfig, dad);
     expect(entries).toHaveLength(1);
-    expect(entries[0].type).toBe('influxdb');
-  });
-
-  it('merges user + global exporters, user-level takes priority', () => {
-    const userWithExporters: UserConfig = {
-      ...dad,
-      exporters: [{ type: 'mqtt', broker_url: 'mqtt://local' }],
-    };
-    const config: AppConfig = { ...appConfig, users: [userWithExporters, mom] };
-    const entries = resolveExportersForUser(config, userWithExporters);
-
-    expect(entries).toHaveLength(2);
     expect(entries[0].type).toBe('mqtt');
-    expect(entries[1].type).toBe('influxdb');
   });
 
   it('dedupes by type — user exporter overrides global of same type', () => {
-    const userWithInflux: UserConfig = {
+    const userWithMqtt: UserConfig = {
       ...dad,
       exporters: [
-        { type: 'influxdb', url: 'http://custom:8086', token: 'x', org: 'y', bucket: 'z' },
+        { type: 'mqtt', broker_url: 'mqtt://custom:1883' },
       ],
     };
-    const config: AppConfig = { ...appConfig, users: [userWithInflux, mom] };
-    const entries = resolveExportersForUser(config, userWithInflux);
+    const config: AppConfig = { ...appConfig, users: [userWithMqtt, mom] };
+    const entries = resolveExportersForUser(config, userWithMqtt);
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].type).toBe('influxdb');
-    expect((entries[0] as Record<string, unknown>).url).toBe('http://custom:8086');
-  });
-
-  it('resolves different exporters for different users', () => {
-    const dadExporters: UserConfig = {
-      ...dad,
-      exporters: [{ type: 'garmin' }],
-    };
-    const momExporters: UserConfig = {
-      ...mom,
-      exporters: [{ type: 'ntfy', topic: 'mom-scale', url: 'https://ntfy.sh' }],
-    };
-    const config: AppConfig = {
-      ...appConfig,
-      users: [dadExporters, momExporters],
-      global_exporters: [
-        { type: 'influxdb', url: 'http://localhost:8086', token: 't', org: 'o', bucket: 'b' },
-      ],
-    };
-
-    const dadEntries = resolveExportersForUser(config, dadExporters);
-    expect(dadEntries.map((e) => e.type)).toEqual(['garmin', 'influxdb']);
-
-    const momEntries = resolveExportersForUser(config, momExporters);
-    expect(momEntries.map((e) => e.type)).toEqual(['ntfy', 'influxdb']);
+    expect(entries[0].type).toBe('mqtt');
+    expect((entries[0] as Record<string, unknown>).broker_url).toBe('mqtt://custom:1883');
   });
 });
 

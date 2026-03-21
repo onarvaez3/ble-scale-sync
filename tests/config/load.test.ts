@@ -118,7 +118,8 @@ users:
     weight_range: { min: 70, max: 100 }
     last_known_weight: null
 global_exporters:
-  - type: garmin
+  - type: mqtt
+    broker_url: "mqtt://localhost:1883"
 runtime:
   continuous_mode: false
   scan_cooldown: 30
@@ -145,14 +146,14 @@ runtime:
 
   it('resolves env references in YAML', () => {
     vi.stubEnv('MY_SECRET', 'secret123');
-    const yaml = VALID_YAML.replace('type: garmin', 'type: garmin\n    password: "${MY_SECRET}"');
+    const yaml = VALID_YAML.replace('broker_url: "mqtt://localhost:1883"', 'broker_url: "mqtt://localhost:1883"\n    password: "${MY_SECRET}"');
     vi.spyOn(fs, 'readFileSync').mockReturnValue(yaml);
     vi.spyOn(fs, 'existsSync').mockReturnValue(true);
 
     const config = loadYamlConfig('/test/config.yaml');
-    const garminEntry = config.global_exporters?.[0];
-    expect(garminEntry).toBeDefined();
-    expect((garminEntry as Record<string, unknown>).password).toBe('secret123');
+    const mqttEntry = config.global_exporters?.[0];
+    expect(mqttEntry).toBeDefined();
+    expect((mqttEntry as Record<string, unknown>).password).toBe('secret123');
   });
 
   it('throws on invalid YAML (missing users)', () => {
@@ -168,7 +169,7 @@ scale:
   });
 
   it('warns and skips unknown exporter types', () => {
-    const yamlWithUnknown = VALID_YAML.replace('type: garmin', 'type: fakexporter');
+    const yamlWithUnknown = VALID_YAML.replace('type: mqtt', 'type: fakexporter');
     vi.spyOn(fs, 'readFileSync').mockReturnValue(yamlWithUnknown);
     vi.spyOn(fs, 'existsSync').mockReturnValue(true);
 
@@ -197,17 +198,6 @@ scale:
     expect(config.ble?.scale_mac).toBe('AA:BB:CC:DD:EE:FF');
   });
 
-  it('sets NOBLE_DRIVER env var when configured', () => {
-    const yamlWithDriver = VALID_YAML.replace(
-      'scale_mac: "FF:03:00:13:A1:04"',
-      'scale_mac: "FF:03:00:13:A1:04"\n  noble_driver: stoprocent',
-    );
-    vi.spyOn(fs, 'readFileSync').mockReturnValue(yamlWithDriver);
-    vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-
-    loadYamlConfig('/test/config.yaml');
-    expect(process.env.NOBLE_DRIVER).toBe('stoprocent');
-  });
 });
 
 // --- loadBleConfig ---
@@ -223,32 +213,26 @@ describe('loadBleConfig', () => {
     vi.spyOn(fs, 'readFileSync').mockReturnValue(`
 ble:
   scale_mac: "AA:BB:CC:DD:EE:FF"
-  noble_driver: abandonware
 `);
 
     const config = loadBleConfig('/test/config.yaml');
     expect(config.scaleMac).toBe('AA:BB:CC:DD:EE:FF');
-    expect(config.nobleDriver).toBe('abandonware');
   });
 
   it('falls back to env vars when no YAML', () => {
     vi.spyOn(fs, 'existsSync').mockReturnValue(false);
     vi.stubEnv('SCALE_MAC', '11:22:33:44:55:66');
-    vi.stubEnv('NOBLE_DRIVER', 'stoprocent');
 
     const config = loadBleConfig('/nonexistent/config.yaml');
     expect(config.scaleMac).toBe('11:22:33:44:55:66');
-    expect(config.nobleDriver).toBe('stoprocent');
   });
 
   it('returns undefined for missing values', () => {
     vi.spyOn(fs, 'existsSync').mockReturnValue(false);
     delete process.env.SCALE_MAC;
-    delete process.env.NOBLE_DRIVER;
 
     const config = loadBleConfig('/nonexistent/config.yaml');
     expect(config.scaleMac).toBeUndefined();
-    expect(config.nobleDriver).toBeUndefined();
   });
 
   it('handles YAML without ble section', () => {
@@ -261,7 +245,6 @@ scale:
 
     const config = loadBleConfig('/test/config.yaml');
     expect(config.scaleMac).toBeUndefined();
-    expect(config.nobleDriver).toBeUndefined();
   });
 
   it('handles invalid YAML gracefully', () => {
@@ -293,7 +276,8 @@ users:
     is_athlete: true
     weight_range: { min: 70, max: 100 }
 global_exporters:
-  - type: garmin
+  - type: mqtt
+    broker_url: "mqtt://localhost:1883"
 `;
 
   afterEach(() => {
@@ -317,6 +301,7 @@ global_exporters:
     vi.stubEnv('USER_BIRTH_DATE', '1990-06-15');
     vi.stubEnv('USER_GENDER', 'male');
     vi.stubEnv('USER_IS_ATHLETE', 'true');
+    vi.stubEnv('MQTT_BROKER_URL', 'mqtt://localhost:1883');
 
     const result = loadAppConfig();
     expect(result.source).toBe('env');

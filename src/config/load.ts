@@ -5,7 +5,7 @@ import { parse as parseYaml } from 'yaml';
 import { config as dotenvConfig } from 'dotenv';
 import { createLogger } from '../logger.js';
 import { AppConfigSchema, formatConfigError } from './schema.js';
-import type { AppConfig, BleConfig, ExporterEntry, MqttProxyConfig } from './schema.js';
+import type { AppConfig, ExporterEntry } from './schema.js';
 import { KNOWN_EXPORTER_NAMES } from '../exporters/registry.js';
 import { loadConfig as loadEnvVarConfig } from '../validate-env.js';
 import { loadExporterConfig } from '../exporters/config.js';
@@ -81,7 +81,7 @@ function applyEnvOverrides(config: AppConfig): AppConfig {
     dry_run: config.runtime?.dry_run ?? false,
     debug: config.runtime?.debug ?? false,
   };
-  const ble = { handler: 'auto' as const, ...config.ble };
+  const ble = { ...config.ble };
 
   // Runtime overrides
   if (process.env.CONTINUOUS_MODE !== undefined) {
@@ -105,24 +105,6 @@ function applyEnvOverrides(config: AppConfig): AppConfig {
   // BLE overrides
   if (process.env.SCALE_MAC !== undefined) {
     ble.scale_mac = process.env.SCALE_MAC;
-  }
-  if (process.env.NOBLE_DRIVER !== undefined) {
-    const driver = process.env.NOBLE_DRIVER.toLowerCase();
-    if (driver === 'abandonware' || driver === 'stoprocent') {
-      ble.noble_driver = driver;
-    }
-  }
-  if (process.env.BLE_HANDLER !== undefined) {
-    const handler = process.env.BLE_HANDLER.toLowerCase();
-    if (handler === 'auto') {
-      ble.handler = handler;
-    } else if (handler === 'mqtt-proxy') {
-      if (ble.mqtt_proxy) {
-        ble.handler = handler;
-      } else {
-        log.warn('BLE_HANDLER=mqtt-proxy ignored: ble.mqtt_proxy not configured');
-      }
-    }
   }
 
   return { ...config, runtime, ble };
@@ -175,16 +157,6 @@ export function loadYamlConfig(configPath?: string): AppConfig {
     })),
   };
 
-  // Set NOBLE_DRIVER env var if configured (needed before BLE handler import)
-  if (config.ble?.noble_driver) {
-    process.env.NOBLE_DRIVER = config.ble.noble_driver;
-  }
-
-  // Set BLE_HANDLER env var if configured (needed before BLE handler import)
-  if (config.ble?.handler && config.ble.handler !== 'auto') {
-    process.env.BLE_HANDLER = config.ble.handler;
-  }
-
   // Set DEBUG env var if configured (needed for logger level)
   if (config.runtime?.debug) {
     process.env.DEBUG = 'true';
@@ -226,37 +198,6 @@ export function loadEnvConfig(): AppConfig {
         ha_device_name: m.haDeviceName,
       });
     }
-    if (name === 'webhook' && exporterConfig.webhook) {
-      const w = exporterConfig.webhook;
-      Object.assign(entry, {
-        url: w.url,
-        method: w.method,
-        headers: w.headers,
-        timeout: w.timeout,
-      });
-    }
-    if (name === 'influxdb' && exporterConfig.influxdb) {
-      const i = exporterConfig.influxdb;
-      Object.assign(entry, {
-        url: i.url,
-        token: i.token,
-        org: i.org,
-        bucket: i.bucket,
-        measurement: i.measurement,
-      });
-    }
-    if (name === 'ntfy' && exporterConfig.ntfy) {
-      const n = exporterConfig.ntfy;
-      Object.assign(entry, {
-        url: n.url,
-        topic: n.topic,
-        title: n.title,
-        priority: n.priority,
-        token: n.token,
-        username: n.username,
-        password: n.password,
-      });
-    }
 
     return entry as ExporterEntry;
   });
@@ -267,9 +208,7 @@ export function loadEnvConfig(): AppConfig {
   return {
     version: 1,
     ble: {
-      handler: 'auto' as const,
       scale_mac: envConfig.scaleMac ?? null,
-      noble_driver: (process.env.NOBLE_DRIVER as 'abandonware' | 'stoprocent') ?? null,
     },
     scale: {
       weight_unit: envConfig.weightUnit,
@@ -332,13 +271,10 @@ export function loadAppConfig(configPath?: string): LoadedConfig {
 
 export interface BleLoadedConfig {
   scaleMac?: string;
-  nobleDriver?: string;
-  bleHandler?: 'auto' | 'mqtt-proxy';
-  mqttProxy?: MqttProxyConfig;
 }
 
 /**
- * Load only BLE-related config (scale_mac, noble_driver, handler, mqtt_proxy).
+ * Load only BLE-related config (scale_mac).
  * Lightweight — doesn't validate full config, doesn't require user profile.
  */
 export function loadBleConfig(configPath?: string): BleLoadedConfig {
@@ -347,13 +283,10 @@ export function loadBleConfig(configPath?: string): BleLoadedConfig {
   if (existsSync(yamlPath)) {
     try {
       const raw = readFileSync(yamlPath, 'utf8');
-      const parsed = parseYaml(raw) as { ble?: BleConfig };
+      const parsed = parseYaml(raw) as { ble?: { scale_mac?: string } };
       const ble = parsed?.ble;
       return {
         scaleMac: ble?.scale_mac ?? undefined,
-        nobleDriver: ble?.noble_driver ?? undefined,
-        bleHandler: (ble?.handler as 'auto' | 'mqtt-proxy') ?? undefined,
-        mqttProxy: ble?.mqtt_proxy ?? undefined,
       };
     } catch {
       // Fall through to env vars
@@ -368,6 +301,5 @@ export function loadBleConfig(configPath?: string): BleLoadedConfig {
 
   return {
     scaleMac: process.env.SCALE_MAC || undefined,
-    nobleDriver: process.env.NOBLE_DRIVER || undefined,
   };
 }

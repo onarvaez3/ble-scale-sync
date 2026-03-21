@@ -1,15 +1,13 @@
 {
   "name": "ble-scale-sync",
   "version": "1.6.3",
-  "description": "Universal BLE Smart Scale bridge. Captures body composition from Renpho, Xiaomi & 20+ others, syncs to Garmin Connect, Strava, MQTT (Home Assistant), InfluxDB, Webhooks, Ntfy & local files. Headless CLI for Raspberry Pi, Linux, macOS & Windows.",
+  "description": "BLE Smart Scale bridge for ES-CS20M. Captures body composition and syncs to MQTT (Home Assistant). Headless CLI for Raspberry Pi / Linux.",
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
     "build": "tsc",
     "start": "tsx src/index.ts",
     "setup": "tsx src/wizard/index.ts",
-    "setup-garmin": "python3 garmin-scripts/setup_garmin.py",
-    "setup-strava": "tsx src/exporters/strava-setup.ts",
     "scan": "tsx src/scan.ts",
     "diagnose": "tsx src/diagnose.ts",
     "validate": "tsx src/config/validate-cli.ts",
@@ -37,9 +35,7 @@
     "node": ">=20.19.0"
   },
   "dependencies": {
-    "@abandonware/noble": "^1.9.2-26",
     "@inquirer/prompts": "^8.3.0",
-    "@stoprocent/noble": "^2.3.16",
     "boxen": "^8.0.1",
     "chalk": "^5.6.2",
     "dotenv": "^17.3.1",

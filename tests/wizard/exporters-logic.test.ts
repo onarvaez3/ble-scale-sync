@@ -165,31 +165,31 @@ describe('exportersStep — confirm skip', () => {
   it('skips exporter config when user declines confirm', async () => {
     // Unified flow: checkbox → confirm(no)
     const ctx = makeCtx([
-      ['webhook'], // unified checkbox: select webhook (supportsGlobal)
-      false, // confirm: "Configure Webhook?" → No
+      ['mqtt'], // unified checkbox: select mqtt (supportsGlobal)
+      false, // confirm: "Configure MQTT?" → No
     ]);
     ctx.config.users = [{ name: 'Test', slug: 'test' }];
 
     await exportersStep.run(ctx);
 
-    // Webhook was skipped, so global_exporters should be undefined (empty after skip)
+    // MQTT was skipped, so global_exporters should be undefined (empty after skip)
     expect(ctx.config.global_exporters).toBeUndefined();
   });
 
   it('configures exporter when user accepts confirm', async () => {
-    const webhookSchema = EXPORTER_SCHEMAS.find((s) => s.name === 'webhook')!;
+    const mqttSchema = EXPORTER_SCHEMAS.find((s) => s.name === 'mqtt')!;
 
     // Build answers: unified checkbox → confirm → field values
     const answers: (string | number | boolean | string[])[] = [
-      ['webhook'], // unified checkbox: select webhook
-      true, // confirm: "Configure Webhook?" → Yes
+      ['mqtt'], // unified checkbox: select mqtt
+      true, // confirm: "Configure MQTT?" → Yes
     ];
     // Provide a default-ish answer for each field
-    for (const field of webhookSchema.fields) {
+    for (const field of mqttSchema.fields) {
       if (field.type === 'string' || field.type === 'password') {
-        answers.push(field.default !== undefined ? String(field.default) : 'https://example.com');
+        answers.push(field.default !== undefined ? String(field.default) : 'mqtt://localhost:1883');
       } else if (field.type === 'number') {
-        answers.push(field.default !== undefined ? String(field.default) : '10000');
+        answers.push(field.default !== undefined ? String(field.default) : '1');
       } else if (field.type === 'boolean') {
         answers.push((field.default as boolean) ?? false);
       } else if (field.type === 'select') {
@@ -204,7 +204,7 @@ describe('exportersStep — confirm skip', () => {
 
     expect(ctx.config.global_exporters).toBeDefined();
     expect(ctx.config.global_exporters!.length).toBe(1);
-    expect(ctx.config.global_exporters![0].type).toBe('webhook');
+    expect(ctx.config.global_exporters![0].type).toBe('mqtt');
   });
 
   it('returns early when no exporters selected', async () => {
@@ -224,25 +224,14 @@ describe('exportersStep — confirm skip', () => {
 describe('EXPORTER_SCHEMAS filtering', () => {
   it('has schemas for all known exporters', () => {
     const names = EXPORTER_SCHEMAS.map((s) => s.name);
-    expect(names).toContain('garmin');
     expect(names).toContain('mqtt');
-    expect(names).toContain('webhook');
-    expect(names).toContain('influxdb');
-    expect(names).toContain('ntfy');
+    expect(names).toHaveLength(1);
   });
 
   it('filters global-supported schemas', () => {
     const global = EXPORTER_SCHEMAS.filter((s) => s.supportsGlobal);
     const names = global.map((s) => s.name);
-    // Garmin is per-user only (supportsGlobal: false)
-    expect(names).not.toContain('garmin');
     expect(names).toContain('mqtt');
-  });
-
-  it('filters per-user-supported schemas', () => {
-    const perUser = EXPORTER_SCHEMAS.filter((s) => s.supportsPerUser);
-    const names = perUser.map((s) => s.name);
-    expect(names).toContain('garmin');
   });
 
   it('each schema has a displayName and description', () => {

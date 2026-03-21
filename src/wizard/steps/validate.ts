@@ -1,7 +1,7 @@
 import type { WizardStep, WizardContext } from '../types.js';
 import { EXPORTER_SCHEMAS, createExporterFromEntry } from '../../exporters/registry.js';
 import type { ExporterEntry, UserConfig } from '../../config/schema.js';
-import { success, error, info, dim } from '../ui.js';
+import { success, error, dim } from '../ui.js';
 
 function getAllExporterEntries(ctx: WizardContext): ExporterEntry[] {
   const entries: ExporterEntry[] = [];
@@ -31,18 +31,10 @@ export const validateStep: WizardStep = {
   order: 70,
 
   async run(ctx: WizardContext): Promise<void> {
-    const allEntries = getAllExporterEntries(ctx);
-
-    // Filter out Garmin — it requires Python subprocess, not testable here
-    const entries = allEntries.filter((e) => e.type !== 'garmin');
+    const entries = getAllExporterEntries(ctx);
 
     if (entries.length === 0) {
-      console.log('\n  No testable exporters configured — skipping connectivity tests.');
-      if (allEntries.length > 0) {
-        console.log(
-          `  ${info('Garmin connectivity is tested at runtime (requires Python + garminconnect).')}`,
-        );
-      }
+      console.log('\n  No exporters configured — skipping connectivity tests.');
       return;
     }
 

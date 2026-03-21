@@ -9,19 +9,9 @@ const log = createLogger('Scan');
 async function main(): Promise<void> {
   const bleConfig = loadBleConfig();
 
-  // Set NOBLE_DRIVER before BLE handler import (dynamic import happens in scanDevices)
-  if (bleConfig.nobleDriver) {
-    process.env.NOBLE_DRIVER = bleConfig.nobleDriver;
-  }
-
   log.info('Scanning for BLE devices... (15 seconds)\n');
 
-  const results: ScanResult[] = await scanDevices(
-    adapters,
-    15_000,
-    bleConfig.bleHandler,
-    bleConfig.mqttProxy,
-  );
+  const results: ScanResult[] = await scanDevices(adapters, 15_000);
   const recognized = results.filter((r) => r.matchedAdapter);
 
   for (const r of results) {
@@ -45,6 +35,8 @@ async function main(): Promise<void> {
       log.info('\nOnly one scale found — auto-discovery will work without scale_mac.');
     }
   }
+
+  void bleConfig;
 }
 
 main().catch((err: Error) => {

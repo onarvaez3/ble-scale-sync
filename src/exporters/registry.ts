@@ -1,21 +1,8 @@
 import type { ExporterSchema } from '../interfaces/exporter-schema.js';
 import type { Exporter } from '../interfaces/exporter.js';
 import type { ExporterEntry } from '../config/schema.js';
-import type {
-  MqttConfig,
-  WebhookConfig,
-  InfluxDbConfig,
-  NtfyConfig,
-  FileConfig,
-  StravaConfig,
-} from './config.js';
-import { garminSchema, GarminExporter } from './garmin.js';
+import type { MqttConfig } from './config.js';
 import { mqttSchema, MqttExporter } from './mqtt.js';
-import { webhookSchema, WebhookExporter } from './webhook.js';
-import { influxdbSchema, InfluxDbExporter } from './influxdb.js';
-import { ntfySchema, NtfyExporter } from './ntfy.js';
-import { fileSchema, FileExporter } from './file.js';
-import { stravaSchema, StravaExporter } from './strava.js';
 
 // --- Registry entry type ---
 
@@ -27,15 +14,6 @@ interface ExporterRegistryEntry {
 // --- Registry ---
 
 export const EXPORTER_REGISTRY: ExporterRegistryEntry[] = [
-  {
-    schema: garminSchema,
-    factory: (config) =>
-      new GarminExporter({
-        email: config.email as string | undefined,
-        password: config.password as string | undefined,
-        token_dir: config.token_dir as string | undefined,
-      }),
-  },
   {
     schema: mqttSchema,
     factory: (config) => {
@@ -51,67 +29,6 @@ export const EXPORTER_REGISTRY: ExporterRegistryEntry[] = [
         haDeviceName: (config.ha_device_name as string) ?? 'BLE Scale',
       };
       return new MqttExporter(mqttConfig);
-    },
-  },
-  {
-    schema: webhookSchema,
-    factory: (config) => {
-      const webhookConfig: WebhookConfig = {
-        url: config.url as string,
-        method: (config.method as string) ?? 'POST',
-        headers: (config.headers as Record<string, string>) ?? {},
-        timeout: (config.timeout as number) ?? 10_000,
-      };
-      return new WebhookExporter(webhookConfig);
-    },
-  },
-  {
-    schema: influxdbSchema,
-    factory: (config) => {
-      const influxConfig: InfluxDbConfig = {
-        url: config.url as string,
-        token: config.token as string,
-        org: config.org as string,
-        bucket: config.bucket as string,
-        measurement: (config.measurement as string) ?? 'body_composition',
-      };
-      return new InfluxDbExporter(influxConfig);
-    },
-  },
-  {
-    schema: ntfySchema,
-    factory: (config) => {
-      const ntfyConfig: NtfyConfig = {
-        url: (config.url as string) ?? 'https://ntfy.sh',
-        topic: config.topic as string,
-        title: (config.title as string) ?? 'Scale Measurement',
-        priority: (config.priority as number) ?? 3,
-        token: config.token as string | undefined,
-        username: config.username as string | undefined,
-        password: config.password as string | undefined,
-      };
-      return new NtfyExporter(ntfyConfig);
-    },
-  },
-  {
-    schema: fileSchema,
-    factory: (config) => {
-      const fileConfig: FileConfig = {
-        filePath: config.file_path as string,
-        format: (config.format as 'csv' | 'jsonl') ?? 'csv',
-      };
-      return new FileExporter(fileConfig);
-    },
-  },
-  {
-    schema: stravaSchema,
-    factory: (config) => {
-      const stravaConfig: StravaConfig = {
-        clientId: config.client_id as string,
-        clientSecret: config.client_secret as string,
-        tokenDir: (config.token_dir as string) ?? './strava-tokens',
-      };
-      return new StravaExporter(stravaConfig);
     },
   },
 ];

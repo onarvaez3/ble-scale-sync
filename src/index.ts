@@ -2,14 +2,8 @@
 
 import { parseArgs } from 'node:util';
 import { writeFileSync } from 'node:fs';
-import { scanAndReadRaw, ReadingWatcher } from './ble/index.js';
+import { scanAndReadRaw } from './ble/index.js';
 import type { RawReading } from './ble/index.js';
-import {
-  publishBeep,
-  publishDisplayReading,
-  publishDisplayResult,
-  setDisplayUsers,
-} from './ble/handler-mqtt-proxy.js';
 import { abortableSleep } from './ble/types.js';
 import { adapters } from './scales/index.js';
 import { createLogger } from './logger.js';
@@ -52,7 +46,6 @@ if (cliFlags.help) {
   console.log('  DEBUG            true/false — override runtime.debug');
   console.log('  SCAN_COOLDOWN    5-3600     — override runtime.scan_cooldown');
   console.log('  SCALE_MAC        MAC/UUID   — override ble.scale_mac');
-  console.log('  NOBLE_DRIVER     abandonware/stoprocent — override ble.noble_driver');
   process.exit(0);
 }
 
@@ -71,8 +64,6 @@ const {
   dryRun,
   continuousMode,
   scanCooldownSec,
-  bleHandler,
-  mqttProxy,
 } = resolveRuntimeConfig(appConfig);
 
 const KG_TO_LBS = 2.20462;
@@ -205,17 +196,6 @@ async function processSingleReading(raw: RawReading, exporters?: Exporter[]): Pr
     return true;
   }
 
-  if (bleHandler === 'mqtt-proxy' && mqttProxy) {
-    publishDisplayReading(
-      mqttProxy,
-      user.slug,
-      user.name,
-      payload.weight,
-      payload.impedance,
-      exporters.map((e) => e.name),
-    ).catch(() => {});
-  }
-
   const context: ExportContext = {
     userName: user.name,
     userSlug: user.slug,
@@ -223,11 +203,7 @@ async function processSingleReading(raw: RawReading, exporters?: Exporter[]): Pr
     ...(raw.batteryLevel !== undefined ? { batteryLevel: raw.batteryLevel } : {}),
   };
 
-  const { success, details } = await dispatchExports(exporters, payload, context);
-
-  if (bleHandler === 'mqtt-proxy' && mqttProxy) {
-    publishDisplayResult(mqttProxy, user.slug, user.name, payload.weight, details).catch(() => {});
-  }
+  const { success } = await dispatchExports(exporters, payload, context);
 
   return success;
 }
@@ -241,8 +217,6 @@ async function runSingleUserCycle(exporters?: Exporter[]): Promise<boolean> {
     profile,
     weightUnit,
     abortSignal: signal,
-    bleHandler,
-    mqttProxy,
     onLiveData(reading) {
       const impStr: string = reading.impedance > 0 ? `${reading.impedance} Ohm` : 'Measuring...';
       process.stdout.write(
@@ -265,10 +239,6 @@ async function processRawReading(raw: RawReading): Promise<boolean> {
 
   if (!match.user) {
     if (match.warning) log.warn(match.warning);
-    // Beep: unknown / out of range (3× low tone)
-    if (bleHandler === 'mqtt-proxy' && mqttProxy) {
-      publishBeep(mqttProxy, 600, 150, 3).catch(() => {});
-    }
     return true; // Not a failure — strategy decided to skip
   }
 
@@ -276,25 +246,8 @@ async function processRawReading(raw: RawReading): Promise<boolean> {
   const prefix = `[${user.name}]`;
   log.info(`${prefix} Matched (tier: ${match.tier})`);
 
-  // Beep: user matched (2× high tone)
-  if (bleHandler === 'mqtt-proxy' && mqttProxy) {
-    publishBeep(mqttProxy, 1200, 200, 2).catch(() => {});
-  }
-
-  // Build exporters for this user (cached) — needed for display reading names
+  // Build exporters for this user (cached)
   const exporters = getExportersForUser(user.slug);
-
-  // Notify display: user matched, export in progress
-  if (bleHandler === 'mqtt-proxy' && mqttProxy) {
-    publishDisplayReading(
-      mqttProxy,
-      user.slug,
-      user.name,
-      weight,
-      raw.reading.impedance,
-      exporters.map((e) => e.name),
-    ).catch(() => {});
-  }
 
   // Drift detection
   const drift = detectWeightDrift(user, weight);
@@ -323,12 +276,7 @@ async function processRawReading(raw: RawReading): Promise<boolean> {
     ...(raw.batteryLevel !== undefined ? { batteryLevel: raw.batteryLevel } : {}),
   };
 
-  const { success, details } = await dispatchExports(exporters, payload, context);
-
-  // Notify display: export results
-  if (bleHandler === 'mqtt-proxy' && mqttProxy) {
-    publishDisplayResult(mqttProxy, user.slug, user.name, payload.weight, details).catch(() => {});
-  }
+  const { success } = await dispatchExports(exporters, payload, context);
 
   // Update last known weight in config.yaml (async, debounced)
   if (configSource === 'yaml' && configPath) {
@@ -350,8 +298,6 @@ async function runMultiUserCycle(): Promise<boolean> {
     profile: defaultProfile,
     weightUnit,
     abortSignal: signal,
-    bleHandler,
-    mqttProxy,
     onLiveData(reading) {
       const impStr: string = reading.impedance > 0 ? `${reading.impedance} Ohm` : 'Measuring...';
       process.stdout.write(
@@ -391,17 +337,6 @@ async function main(): Promise<void> {
     }
   }
 
-  // Publish user info for display boards (included in config topic)
-  if (bleHandler === 'mqtt-proxy' && mqttProxy) {
-    setDisplayUsers(
-      appConfig.users.map((u) => ({
-        slug: u.slug,
-        name: u.name,
-        weight_range: u.weight_range,
-      })),
-    );
-  }
-
   if (!continuousMode) {
     touchHeartbeat();
     const success = isMultiUser ? await runMultiUserCycle() : await runSingleUserCycle(exporters);
@@ -414,78 +349,38 @@ async function main(): Promise<void> {
   const BACKOFF_MAX_MS = 10_000;
   let backoffMs = 0; // 0 = no failure yet
 
-  if (bleHandler === 'mqtt-proxy' && mqttProxy) {
-    // Event-driven: persistent MQTT connection with always-on message handler
-    const defaultProfile = resolveUserProfile(appConfig.users[0], appConfig.scale);
-    const watcher = new ReadingWatcher(mqttProxy, adapters, SCALE_MAC, defaultProfile);
+  while (!signal.aborted) {
+    try {
+      touchHeartbeat();
 
-    while (!signal.aborted) {
-      try {
-        touchHeartbeat();
-
-        // Start watcher (no-op if already started)
-        await watcher.start();
-
-        if (needsReload) {
-          await reloadConfig();
-          needsReload = false;
-          watcher.updateConfig(adapters, SCALE_MAC);
-          if (appConfig.users.length === 1 && !dryRun) {
-            exporters = buildSingleUserExporters();
-          }
+      if (needsReload) {
+        await reloadConfig();
+        needsReload = false;
+        // Rebuild single-user exporters after reload
+        if (appConfig.users.length === 1 && !dryRun) {
+          exporters = buildSingleUserExporters();
         }
-
-        const raw = await watcher.nextReading(signal);
-
-        if (appConfig.users.length > 1) {
-          await processRawReading(raw);
-        } else {
-          await processSingleReading(raw, exporters);
-        }
-
-        backoffMs = 0;
-      } catch (err) {
-        if (signal.aborted) break;
-        backoffMs = backoffMs === 0 ? BACKOFF_INITIAL_MS : Math.min(backoffMs * 2, BACKOFF_MAX_MS);
-        log.info(`Error processing reading, retrying in ${backoffMs / 1000}s... (${errMsg(err)})`);
-        await abortableSleep(backoffMs, signal).catch(() => {});
       }
-    }
-  } else {
-    // Poll-based loop for auto/noble BLE handlers
-    while (!signal.aborted) {
-      try {
-        touchHeartbeat();
 
-        if (needsReload) {
-          await reloadConfig();
-          needsReload = false;
-          // Rebuild single-user exporters after reload
-          if (appConfig.users.length === 1 && !dryRun) {
-            exporters = buildSingleUserExporters();
-          }
-        }
-
-        if (appConfig.users.length > 1) {
-          await runMultiUserCycle();
-        } else {
-          await runSingleUserCycle(exporters);
-        }
-
-        backoffMs = 0; // Reset backoff on success
-
-        if (signal.aborted) break;
-        const cooldown = appConfig.runtime?.scan_cooldown ?? scanCooldownSec;
-        log.info(`\nWaiting ${cooldown}s before next scan...`);
-        await abortableSleep(cooldown * 1000, signal);
-      } catch (err) {
-        if (signal.aborted) break;
-
-        // Exponential backoff: 5s → 10s → 20s → 40s → 60s (cap)
-        backoffMs = backoffMs === 0 ? BACKOFF_INITIAL_MS : Math.min(backoffMs * 2, BACKOFF_MAX_MS);
-        log.info(`No scale found, retrying in ${backoffMs / 1000}s... (${errMsg(err)})`);
-        await abortableSleep(backoffMs, signal).catch(() => {});
+      if (appConfig.users.length > 1) {
+        await runMultiUserCycle();
+      } else {
+        await runSingleUserCycle(exporters);
       }
+
+      backoffMs = 0; // Reset backoff on success
+
+      if (signal.aborted) break;
+      const cooldown = appConfig.runtime?.scan_cooldown ?? scanCooldownSec;
+      log.info(`\nWaiting ${cooldown}s before next scan...`);
+      await abortableSleep(cooldown * 1000, signal);
+    } catch (err) {
+      if (signal.aborted) break;
+
+      // Exponential backoff: 5s → 10s (cap)
+      backoffMs = backoffMs === 0 ? BACKOFF_INITIAL_MS : Math.min(backoffMs * 2, BACKOFF_MAX_MS);
+      log.info(`No scale found, retrying in ${backoffMs / 1000}s... (${errMsg(err)})`);
+      await abortableSleep(backoffMs, signal).catch(() => {});
     }
   }
 

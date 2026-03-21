@@ -1,12 +1,5 @@
 import type { UserProfile } from '../interfaces/scale-adapter.js';
-import type {
-  AppConfig,
-  UserConfig,
-  ScaleConfig,
-  ExporterEntry,
-  WeightUnit,
-  MqttProxyConfig,
-} from './schema.js';
+import type { AppConfig, UserConfig, ScaleConfig, ExporterEntry, WeightUnit } from './schema.js';
 
 // --- User profile resolution ---
 
@@ -50,8 +43,6 @@ export interface ResolvedRuntimeConfig {
   dryRun: boolean;
   continuousMode: boolean;
   scanCooldownSec: number;
-  bleHandler: 'auto' | 'mqtt-proxy';
-  mqttProxy?: MqttProxyConfig;
 }
 
 /**
@@ -68,8 +59,6 @@ export function resolveRuntimeConfig(config: AppConfig): ResolvedRuntimeConfig {
     dryRun: config.runtime?.dry_run ?? false,
     continuousMode: config.runtime?.continuous_mode ?? false,
     scanCooldownSec: config.runtime?.scan_cooldown ?? 30,
-    bleHandler: config.ble?.handler ?? 'auto',
-    mqttProxy: config.ble?.mqtt_proxy ?? undefined,
   };
 }
 

@@ -5,31 +5,19 @@ import {
   KNOWN_EXPORTER_NAMES,
   createExporterFromEntry,
 } from '../../src/exporters/registry.js';
-import { GarminExporter } from '../../src/exporters/garmin.js';
 import { MqttExporter } from '../../src/exporters/mqtt.js';
-import { WebhookExporter } from '../../src/exporters/webhook.js';
-import { InfluxDbExporter } from '../../src/exporters/influxdb.js';
-import { NtfyExporter } from '../../src/exporters/ntfy.js';
-import { FileExporter } from '../../src/exporters/file.js';
-import { StravaExporter } from '../../src/exporters/strava.js';
 import type { ExporterEntry } from '../../src/config/schema.js';
 
 // ─── EXPORTER_REGISTRY ─────────────────────────────────────────────────────
 
 describe('EXPORTER_REGISTRY', () => {
-  it('contains 7 exporter entries', () => {
-    expect(EXPORTER_REGISTRY).toHaveLength(7);
+  it('contains 1 exporter entry', () => {
+    expect(EXPORTER_REGISTRY).toHaveLength(1);
   });
 
-  it('has entries for all known exporters', () => {
+  it('has entry for mqtt', () => {
     const names = EXPORTER_REGISTRY.map((e) => e.schema.name);
-    expect(names).toContain('garmin');
     expect(names).toContain('mqtt');
-    expect(names).toContain('webhook');
-    expect(names).toContain('influxdb');
-    expect(names).toContain('ntfy');
-    expect(names).toContain('file');
-    expect(names).toContain('strava');
   });
 
   it('each entry has a schema and factory', () => {
@@ -47,8 +35,8 @@ describe('EXPORTER_REGISTRY', () => {
 // ─── EXPORTER_SCHEMAS ──────────────────────────────────────────────────────
 
 describe('EXPORTER_SCHEMAS', () => {
-  it('derives 7 schemas from registry', () => {
-    expect(EXPORTER_SCHEMAS).toHaveLength(7);
+  it('derives 1 schema from registry', () => {
+    expect(EXPORTER_SCHEMAS).toHaveLength(1);
   });
 
   it('each schema has required fields', () => {
@@ -60,20 +48,6 @@ describe('EXPORTER_SCHEMAS', () => {
       expect(typeof schema.supportsGlobal).toBe('boolean');
       expect(typeof schema.supportsPerUser).toBe('boolean');
     }
-  });
-
-  it('garmin schema supports per-user only', () => {
-    const garmin = EXPORTER_SCHEMAS.find((s) => s.name === 'garmin');
-    expect(garmin).toBeDefined();
-    expect(garmin!.supportsGlobal).toBe(false);
-    expect(garmin!.supportsPerUser).toBe(true);
-  });
-
-  it('garmin schema has Python dependency', () => {
-    const garmin = EXPORTER_SCHEMAS.find((s) => s.name === 'garmin');
-    expect(garmin!.dependencies).toBeDefined();
-    expect(garmin!.dependencies).toHaveLength(1);
-    expect(garmin!.dependencies![0].name).toBe('Python 3');
   });
 
   it('mqtt schema supports global only', () => {
@@ -89,103 +63,24 @@ describe('EXPORTER_SCHEMAS', () => {
     expect(brokerField).toBeDefined();
     expect(brokerField!.required).toBe(true);
   });
-
-  it('webhook schema has url as required field', () => {
-    const webhook = EXPORTER_SCHEMAS.find((s) => s.name === 'webhook');
-    const urlField = webhook!.fields.find((f) => f.key === 'url');
-    expect(urlField).toBeDefined();
-    expect(urlField!.required).toBe(true);
-  });
-
-  it('influxdb schema has 4 required fields', () => {
-    const influxdb = EXPORTER_SCHEMAS.find((s) => s.name === 'influxdb');
-    const requiredFields = influxdb!.fields.filter((f) => f.required);
-    expect(requiredFields).toHaveLength(4);
-    const keys = requiredFields.map((f) => f.key);
-    expect(keys).toContain('url');
-    expect(keys).toContain('token');
-    expect(keys).toContain('org');
-    expect(keys).toContain('bucket');
-  });
-
-  it('ntfy schema has topic as only required field', () => {
-    const ntfy = EXPORTER_SCHEMAS.find((s) => s.name === 'ntfy');
-    const requiredFields = ntfy!.fields.filter((f) => f.required);
-    expect(requiredFields).toHaveLength(1);
-    expect(requiredFields[0].key).toBe('topic');
-  });
-
-  it('file schema supports both global and per-user', () => {
-    const file = EXPORTER_SCHEMAS.find((s) => s.name === 'file');
-    expect(file).toBeDefined();
-    expect(file!.supportsGlobal).toBe(true);
-    expect(file!.supportsPerUser).toBe(true);
-  });
-
-  it('file schema has file_path as required field', () => {
-    const file = EXPORTER_SCHEMAS.find((s) => s.name === 'file');
-    const requiredFields = file!.fields.filter((f) => f.required);
-    expect(requiredFields).toHaveLength(1);
-    expect(requiredFields[0].key).toBe('file_path');
-  });
-
-  it('strava schema supports per-user only', () => {
-    const strava = EXPORTER_SCHEMAS.find((s) => s.name === 'strava');
-    expect(strava).toBeDefined();
-    expect(strava!.supportsGlobal).toBe(false);
-    expect(strava!.supportsPerUser).toBe(true);
-  });
-
-  it('strava schema has client_id and client_secret as required fields', () => {
-    const strava = EXPORTER_SCHEMAS.find((s) => s.name === 'strava');
-    const requiredFields = strava!.fields.filter((f) => f.required);
-    expect(requiredFields).toHaveLength(2);
-    const keys = requiredFields.map((f) => f.key);
-    expect(keys).toContain('client_id');
-    expect(keys).toContain('client_secret');
-  });
 });
 
 // ─── KNOWN_EXPORTER_NAMES ──────────────────────────────────────────────────
 
 describe('KNOWN_EXPORTER_NAMES', () => {
-  it('is a Set with 7 entries', () => {
+  it('is a Set with 1 entry', () => {
     expect(KNOWN_EXPORTER_NAMES).toBeInstanceOf(Set);
-    expect(KNOWN_EXPORTER_NAMES.size).toBe(7);
+    expect(KNOWN_EXPORTER_NAMES.size).toBe(1);
   });
 
-  it('contains all exporter names', () => {
-    expect(KNOWN_EXPORTER_NAMES.has('garmin')).toBe(true);
+  it('contains mqtt', () => {
     expect(KNOWN_EXPORTER_NAMES.has('mqtt')).toBe(true);
-    expect(KNOWN_EXPORTER_NAMES.has('webhook')).toBe(true);
-    expect(KNOWN_EXPORTER_NAMES.has('influxdb')).toBe(true);
-    expect(KNOWN_EXPORTER_NAMES.has('ntfy')).toBe(true);
-    expect(KNOWN_EXPORTER_NAMES.has('file')).toBe(true);
-    expect(KNOWN_EXPORTER_NAMES.has('strava')).toBe(true);
   });
 });
 
 // ─── createExporterFromEntry() ─────────────────────────────────────────────
 
 describe('createExporterFromEntry()', () => {
-  it('creates GarminExporter from entry', () => {
-    const entry: ExporterEntry = { type: 'garmin' };
-    const exporter = createExporterFromEntry(entry);
-    expect(exporter).toBeInstanceOf(GarminExporter);
-    expect(exporter.name).toBe('garmin');
-  });
-
-  it('creates GarminExporter with config fields', () => {
-    const entry: ExporterEntry = {
-      type: 'garmin',
-      email: 'test@example.com',
-      password: 'secret',
-      token_dir: './tokens/test',
-    };
-    const exporter = createExporterFromEntry(entry);
-    expect(exporter).toBeInstanceOf(GarminExporter);
-  });
-
   it('creates MqttExporter from entry', () => {
     const entry: ExporterEntry = {
       type: 'mqtt',
@@ -197,39 +92,6 @@ describe('createExporterFromEntry()', () => {
     expect(exporter.name).toBe('mqtt');
   });
 
-  it('creates WebhookExporter from entry', () => {
-    const entry: ExporterEntry = {
-      type: 'webhook',
-      url: 'https://example.com/hook',
-    };
-    const exporter = createExporterFromEntry(entry);
-    expect(exporter).toBeInstanceOf(WebhookExporter);
-    expect(exporter.name).toBe('webhook');
-  });
-
-  it('creates InfluxDbExporter from entry', () => {
-    const entry: ExporterEntry = {
-      type: 'influxdb',
-      url: 'http://localhost:8086',
-      token: 'my-token',
-      org: 'my-org',
-      bucket: 'my-bucket',
-    };
-    const exporter = createExporterFromEntry(entry);
-    expect(exporter).toBeInstanceOf(InfluxDbExporter);
-    expect(exporter.name).toBe('influxdb');
-  });
-
-  it('creates NtfyExporter from entry', () => {
-    const entry: ExporterEntry = {
-      type: 'ntfy',
-      topic: 'my-scale',
-    };
-    const exporter = createExporterFromEntry(entry);
-    expect(exporter).toBeInstanceOf(NtfyExporter);
-    expect(exporter.name).toBe('ntfy');
-  });
-
   it('throws on unknown exporter type', () => {
     const entry: ExporterEntry = { type: 'unknown' };
     expect(() => createExporterFromEntry(entry)).toThrow("Unknown exporter type 'unknown'");
@@ -237,7 +99,6 @@ describe('createExporterFromEntry()', () => {
 
   it('error message includes known exporter names', () => {
     const entry: ExporterEntry = { type: 'bad' };
-    expect(() => createExporterFromEntry(entry)).toThrow('garmin');
     expect(() => createExporterFromEntry(entry)).toThrow('mqtt');
   });
 
@@ -248,57 +109,5 @@ describe('createExporterFromEntry()', () => {
     };
     const exporter = createExporterFromEntry(entry);
     expect(exporter).toBeInstanceOf(MqttExporter);
-    // Verify it was created successfully with defaults (no throw)
-  });
-
-  it('applies defaults for optional ntfy fields', () => {
-    const entry: ExporterEntry = {
-      type: 'ntfy',
-      topic: 'test',
-    };
-    const exporter = createExporterFromEntry(entry);
-    expect(exporter).toBeInstanceOf(NtfyExporter);
-  });
-
-  it('creates FileExporter from entry', () => {
-    const entry: ExporterEntry = {
-      type: 'file',
-      file_path: '/tmp/measurements.csv',
-    };
-    const exporter = createExporterFromEntry(entry);
-    expect(exporter).toBeInstanceOf(FileExporter);
-    expect(exporter.name).toBe('file');
-  });
-
-  it('creates FileExporter with jsonl format', () => {
-    const entry: ExporterEntry = {
-      type: 'file',
-      file_path: '/tmp/data.jsonl',
-      format: 'jsonl',
-    };
-    const exporter = createExporterFromEntry(entry);
-    expect(exporter).toBeInstanceOf(FileExporter);
-  });
-
-  it('creates StravaExporter from entry', () => {
-    const entry: ExporterEntry = {
-      type: 'strava',
-      client_id: '12345',
-      client_secret: 'secret',
-    };
-    const exporter = createExporterFromEntry(entry);
-    expect(exporter).toBeInstanceOf(StravaExporter);
-    expect(exporter.name).toBe('strava');
-  });
-
-  it('creates StravaExporter with custom token_dir', () => {
-    const entry: ExporterEntry = {
-      type: 'strava',
-      client_id: '12345',
-      client_secret: 'secret',
-      token_dir: './custom-tokens',
-    };
-    const exporter = createExporterFromEntry(entry);
-    expect(exporter).toBeInstanceOf(StravaExporter);
   });
 });

@@ -2,17 +2,9 @@ import { createLogger } from '../logger.js';
 
 const log = createLogger('ExporterConfig');
 
-export type ExporterName = 'garmin' | 'mqtt' | 'webhook' | 'influxdb' | 'ntfy' | 'file' | 'strava';
+export type ExporterName = 'mqtt';
 
-const KNOWN_EXPORTERS = new Set<ExporterName>([
-  'garmin',
-  'mqtt',
-  'webhook',
-  'influxdb',
-  'ntfy',
-  'file',
-  'strava',
-]);
+const KNOWN_EXPORTERS = new Set<ExporterName>(['mqtt']);
 
 export interface MqttConfig {
   brokerUrl: string;
@@ -26,50 +18,9 @@ export interface MqttConfig {
   haDeviceName: string;
 }
 
-export interface WebhookConfig {
-  url: string;
-  method: string;
-  headers: Record<string, string>;
-  timeout: number;
-}
-
-export interface InfluxDbConfig {
-  url: string;
-  token: string;
-  org: string;
-  bucket: string;
-  measurement: string;
-}
-
-export interface NtfyConfig {
-  url: string;
-  topic: string;
-  title: string;
-  priority: number;
-  token?: string;
-  username?: string;
-  password?: string;
-}
-
-export interface FileConfig {
-  filePath: string;
-  format: 'csv' | 'jsonl';
-}
-
-export interface StravaConfig {
-  clientId: string;
-  clientSecret: string;
-  tokenDir: string;
-}
-
 export interface ExporterConfig {
   exporters: ExporterName[];
   mqtt?: MqttConfig;
-  webhook?: WebhookConfig;
-  influxdb?: InfluxDbConfig;
-  ntfy?: NtfyConfig;
-  file?: FileConfig;
-  strava?: StravaConfig;
 }
 
 function fail(msg: string): never {
@@ -83,29 +34,6 @@ function parseQos(raw: string | undefined): 0 | 1 | 2 {
   fail(`MQTT_QOS must be 0, 1, or 2, got '${raw}'`);
 }
 
-function parseHeaders(raw: string | undefined): Record<string, string> {
-  if (!raw) return {};
-  const headers: Record<string, string> = {};
-  for (const pair of raw.split(',')) {
-    const idx = pair.indexOf(':');
-    if (idx < 1) {
-      log.warn(`Ignoring invalid header (missing ':'): '${pair.trim()}'`);
-      continue;
-    }
-    const key = pair.slice(0, idx).trim();
-    const value = pair.slice(idx + 1).trim();
-    if (key) headers[key] = value;
-  }
-  return headers;
-}
-
-function parsePriority(raw: string | undefined): number {
-  if (!raw) return 3;
-  const num = Number(raw);
-  if (Number.isInteger(num) && num >= 1 && num <= 5) return num;
-  fail(`NTFY_PRIORITY must be 1-5, got '${raw}'`);
-}
-
 function parseBoolean(key: string, raw: string | undefined, defaultValue: boolean): boolean {
   if (!raw) return defaultValue;
   const lower = raw.toLowerCase();
@@ -116,7 +44,7 @@ function parseBoolean(key: string, raw: string | undefined, defaultValue: boolea
 
 export function loadExporterConfig(): ExporterConfig {
   const raw = process.env.EXPORTERS?.trim();
-  const names = raw ? raw.split(',').map((s) => s.trim().toLowerCase()) : ['garmin'];
+  const names = raw ? raw.split(',').map((s) => s.trim().toLowerCase()) : ['mqtt'];
 
   const exporters: ExporterName[] = [];
   for (const name of names) {
@@ -151,99 +79,6 @@ export function loadExporterConfig(): ExporterConfig {
     };
   }
 
-  let webhook: WebhookConfig | undefined;
-  if (exporters.includes('webhook')) {
-    const url = process.env.WEBHOOK_URL?.trim();
-    if (!url) {
-      fail('WEBHOOK_URL is required when webhook exporter is enabled.');
-    }
-    webhook = {
-      url,
-      method: process.env.WEBHOOK_METHOD?.trim()?.toUpperCase() || 'POST',
-      headers: parseHeaders(process.env.WEBHOOK_HEADERS?.trim()),
-      timeout: Number(process.env.WEBHOOK_TIMEOUT?.trim()) || 10_000,
-    };
-  }
-
-  let influxdb: InfluxDbConfig | undefined;
-  if (exporters.includes('influxdb')) {
-    const url = process.env.INFLUXDB_URL?.trim();
-    if (!url) {
-      fail('INFLUXDB_URL is required when influxdb exporter is enabled.');
-    }
-    const token = process.env.INFLUXDB_TOKEN?.trim();
-    if (!token) {
-      fail('INFLUXDB_TOKEN is required when influxdb exporter is enabled.');
-    }
-    const org = process.env.INFLUXDB_ORG?.trim();
-    if (!org) {
-      fail('INFLUXDB_ORG is required when influxdb exporter is enabled.');
-    }
-    const bucket = process.env.INFLUXDB_BUCKET?.trim();
-    if (!bucket) {
-      fail('INFLUXDB_BUCKET is required when influxdb exporter is enabled.');
-    }
-    influxdb = {
-      url,
-      token,
-      org,
-      bucket,
-      measurement: process.env.INFLUXDB_MEASUREMENT?.trim() || 'body_composition',
-    };
-  }
-
-  let ntfy: NtfyConfig | undefined;
-  if (exporters.includes('ntfy')) {
-    const topic = process.env.NTFY_TOPIC?.trim();
-    if (!topic) {
-      fail('NTFY_TOPIC is required when ntfy exporter is enabled.');
-    }
-    ntfy = {
-      url: process.env.NTFY_URL?.trim() || 'https://ntfy.sh',
-      topic,
-      title: process.env.NTFY_TITLE?.trim() || 'Scale Measurement',
-      priority: parsePriority(process.env.NTFY_PRIORITY?.trim()),
-      token: process.env.NTFY_TOKEN?.trim() || undefined,
-      username: process.env.NTFY_USERNAME?.trim() || undefined,
-      password: process.env.NTFY_PASSWORD?.trim() || undefined,
-    };
-  }
-
-  let file: FileConfig | undefined;
-  if (exporters.includes('file')) {
-    const filePath = process.env.FILE_PATH?.trim();
-    if (!filePath) {
-      fail('FILE_PATH is required when file exporter is enabled.');
-    }
-    const rawFormat = process.env.FILE_FORMAT?.trim()?.toLowerCase();
-    let format: 'csv' | 'jsonl';
-    if (rawFormat === 'jsonl') {
-      format = 'jsonl';
-    } else if (rawFormat === 'csv' || !rawFormat) {
-      format = 'csv';
-    } else {
-      log.warn(`Invalid FILE_FORMAT "${rawFormat}", falling back to "csv".`);
-      format = 'csv';
-    }
-    file = { filePath, format };
-  }
-
-  let strava: StravaConfig | undefined;
-  if (exporters.includes('strava')) {
-    const clientId = process.env.STRAVA_CLIENT_ID?.trim();
-    if (!clientId) {
-      fail('STRAVA_CLIENT_ID is required when strava exporter is enabled.');
-    }
-    const clientSecret = process.env.STRAVA_CLIENT_SECRET?.trim();
-    if (!clientSecret) {
-      fail('STRAVA_CLIENT_SECRET is required when strava exporter is enabled.');
-    }
-    strava = {
-      clientId,
-      clientSecret,
-      tokenDir: process.env.STRAVA_TOKEN_DIR?.trim() || './strava-tokens',
-    };
-  }
-
-  return { exporters, mqtt, webhook, influxdb, ntfy, file, strava };
+  void log;
+  return { exporters, mqtt };
 }

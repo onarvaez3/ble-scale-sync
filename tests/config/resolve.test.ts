@@ -28,7 +28,7 @@ const BASE_CONFIG: AppConfig = {
   scale: SCALE_CM,
   unknown_user: 'nearest',
   users: [USER],
-  global_exporters: [{ type: 'garmin' }, { type: 'mqtt', broker_url: 'mqtt://host' }],
+  global_exporters: [{ type: 'mqtt', broker_url: 'mqtt://host' }],
   runtime: {
     continuous_mode: true,
     scan_cooldown: 60,
@@ -134,34 +134,6 @@ describe('resolveRuntimeConfig', () => {
     expect(result.dryRun).toBe(false);
   });
 
-  it('defaults bleHandler to auto when ble is undefined', () => {
-    const config = { ...BASE_CONFIG, ble: undefined };
-    const result = resolveRuntimeConfig(config);
-    expect(result.bleHandler).toBe('auto');
-    expect(result.mqttProxy).toBeUndefined();
-  });
-
-  it('extracts bleHandler and mqttProxy from ble config', () => {
-    const config = {
-      ...BASE_CONFIG,
-      ble: {
-        handler: 'mqtt-proxy' as const,
-        scale_mac: 'FF:03:00:13:A1:04',
-        mqtt_proxy: {
-          broker_url: 'mqtt://localhost:1883',
-          device_id: 'esp32-test',
-          topic_prefix: 'ble-proxy',
-        },
-      },
-    };
-    const result = resolveRuntimeConfig(config);
-    expect(result.bleHandler).toBe('mqtt-proxy');
-    expect(result.mqttProxy).toEqual({
-      broker_url: 'mqtt://localhost:1883',
-      device_id: 'esp32-test',
-      topic_prefix: 'ble-proxy',
-    });
-  });
 });
 
 // --- resolveExportersForUser ---
@@ -169,34 +141,19 @@ describe('resolveRuntimeConfig', () => {
 describe('resolveExportersForUser', () => {
   it('returns global exporters when user has none', () => {
     const entries = resolveExportersForUser(BASE_CONFIG, USER);
-    expect(entries).toHaveLength(2);
-    expect(entries[0].type).toBe('garmin');
-    expect(entries[1].type).toBe('mqtt');
-  });
-
-  it('returns user exporters first, then global', () => {
-    const userWithExporters = {
-      ...USER,
-      exporters: [{ type: 'webhook', url: 'http://test' }],
-    };
-    const entries = resolveExportersForUser(BASE_CONFIG, userWithExporters);
-    expect(entries).toHaveLength(3);
-    expect(entries[0].type).toBe('webhook');
-    expect(entries[1].type).toBe('garmin');
-    expect(entries[2].type).toBe('mqtt');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].type).toBe('mqtt');
   });
 
   it('deduplicates by type (user overrides global)', () => {
-    const userWithGarmin = {
+    const userWithMqtt = {
       ...USER,
-      exporters: [{ type: 'garmin', email: 'user@example.com' }],
+      exporters: [{ type: 'mqtt', broker_url: 'mqtt://user-broker' }],
     };
-    const entries = resolveExportersForUser(BASE_CONFIG, userWithGarmin);
-    expect(entries).toHaveLength(2);
-    // User's garmin overrides global garmin
-    expect(entries[0].type).toBe('garmin');
-    expect((entries[0] as Record<string, unknown>).email).toBe('user@example.com');
-    expect(entries[1].type).toBe('mqtt');
+    const entries = resolveExportersForUser(BASE_CONFIG, userWithMqtt);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].type).toBe('mqtt');
+    expect((entries[0] as Record<string, unknown>).broker_url).toBe('mqtt://user-broker');
   });
 
   it('returns empty array when no exporters configured', () => {
@@ -213,7 +170,7 @@ describe('resolveForSingleUser', () => {
     const result = resolveForSingleUser(BASE_CONFIG);
     expect(result.profile).toBeDefined();
     expect(result.profile.height).toBe(183);
-    expect(result.exporterEntries).toHaveLength(2);
+    expect(result.exporterEntries).toHaveLength(1);
     expect(result.continuousMode).toBe(true);
     expect(result.scaleMac).toBe('FF:03:00:13:A1:04');
   });
@@ -230,11 +187,11 @@ describe('resolveForSingleUser', () => {
   it('resolves exporter entries for the first user', () => {
     const userWithExporters = {
       ...USER,
-      exporters: [{ type: 'ntfy', topic: 'test' }],
+      exporters: [{ type: 'mqtt', broker_url: 'mqtt://user' }],
     };
     const config = { ...BASE_CONFIG, users: [userWithExporters] };
     const result = resolveForSingleUser(config);
-    expect(result.exporterEntries).toHaveLength(3); // ntfy + garmin + mqtt
-    expect(result.exporterEntries[0].type).toBe('ntfy');
+    expect(result.exporterEntries).toHaveLength(1);
+    expect(result.exporterEntries[0].type).toBe('mqtt');
   });
 });

@@ -24,10 +24,8 @@ const VALID_USER = {
   last_known_weight: null,
   exporters: [
     {
-      type: 'garmin',
-      email: 'dad@example.com',
-      password: '${GARMIN_PASSWORD_DAD}',
-      token_dir: './garmin-tokens/dad',
+      type: 'mqtt',
+      broker_url: 'mqtts://broker.hivemq.com:8883',
     },
   ],
 };
@@ -36,7 +34,6 @@ const VALID_CONFIG = {
   version: 1 as const,
   ble: {
     scale_mac: 'FF:03:00:13:A1:04',
-    noble_driver: null,
   },
   scale: {
     weight_unit: 'kg' as const,
@@ -274,64 +271,6 @@ describe('BleSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts valid noble_driver values', () => {
-    for (const driver of ['abandonware', 'stoprocent'] as const) {
-      const result = BleSchema.safeParse({ noble_driver: driver });
-      expect(result.success).toBe(true);
-    }
-  });
-
-  it('accepts null noble_driver', () => {
-    const result = BleSchema.safeParse({ noble_driver: null });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects invalid noble_driver', () => {
-    const result = BleSchema.safeParse({ noble_driver: 'invalid' });
-    expect(result.success).toBe(false);
-  });
-
-  it('defaults handler to auto', () => {
-    const result = BleSchema.safeParse({});
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.handler).toBe('auto');
-    }
-  });
-
-  it('accepts handler mqtt-proxy with mqtt_proxy config', () => {
-    const result = BleSchema.safeParse({
-      handler: 'mqtt-proxy',
-      mqtt_proxy: {
-        broker_url: 'mqtt://localhost:1883',
-      },
-    });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.handler).toBe('mqtt-proxy');
-      expect(result.data.mqtt_proxy?.broker_url).toBe('mqtt://localhost:1883');
-      expect(result.data.mqtt_proxy?.device_id).toBe('esp32-ble-proxy');
-      expect(result.data.mqtt_proxy?.topic_prefix).toBe('ble-proxy');
-    }
-  });
-
-  it('rejects handler mqtt-proxy without mqtt_proxy config', () => {
-    const result = BleSchema.safeParse({ handler: 'mqtt-proxy' });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues[0].message).toContain('mqtt_proxy config is required');
-    }
-  });
-
-  it('accepts handler auto without mqtt_proxy', () => {
-    const result = BleSchema.safeParse({ handler: 'auto' });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects invalid handler value', () => {
-    const result = BleSchema.safeParse({ handler: 'noble' });
-    expect(result.success).toBe(false);
-  });
 });
 
 // ─── ScaleSchema ───────────────────────────────────────────────────────────
