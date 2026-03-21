@@ -349,7 +349,10 @@ async function main(): Promise<void> {
   // Continuous mode: keep a single D-Bus session alive across all scan cycles.
   // This avoids tearing down and rebuilding the BlueZ connection each time,
   // which eliminates alternating le-connection-abort-by-local failures.
-  const bleSession = await createBleSession();
+  // After each successful reading, the session is recycled concurrently with
+  // the cooldown — no extra downtime, and each new reading starts with a
+  // clean BlueZ state.
+  let bleSession = await createBleSession();
   const BACKOFF_INITIAL_MS = 5_000;
   const BACKOFF_MAX_MS = 10_000;
   let backoffMs = 0; // 0 = no failure yet
@@ -379,7 +382,13 @@ async function main(): Promise<void> {
         if (signal.aborted) break;
         const cooldown = appConfig.runtime?.scan_cooldown ?? scanCooldownSec;
         log.info(`\nWaiting ${cooldown}s before next scan...`);
-        await abortableSleep(cooldown * 1000, signal);
+        // Recycle the BLE session concurrently with the cooldown sleep.
+        // The cooldown is dead time (no one should be on the scale), so we
+        // use it to get a clean BlueZ state for the next reading at no cost.
+        [bleSession] = await Promise.all([
+          destroyBleSession(bleSession).then(() => createBleSession()),
+          abortableSleep(cooldown * 1000, signal),
+        ]);
       } catch (err) {
         if (signal.aborted) break;
 
