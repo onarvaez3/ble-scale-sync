@@ -409,7 +409,7 @@ async function main(): Promise<void> {
 
   // Continuous mode loop with exponential backoff on failures
   const BACKOFF_INITIAL_MS = 5_000;
-  const BACKOFF_MAX_MS = 60_000;
+  const BACKOFF_MAX_MS = 10_000;
   let backoffMs = 0; // 0 = no failure yet
 
   if (bleHandler === 'mqtt-proxy' && mqttProxy) {

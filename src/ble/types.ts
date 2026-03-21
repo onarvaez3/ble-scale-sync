@@ -8,9 +8,9 @@ export { errMsg };
 
 export const LBS_TO_KG = 0.453592;
 export const BT_BASE_UUID_SUFFIX = '00001000800000805f9b34fb';
-export const CONNECT_TIMEOUT_MS = 30_000;
+export const CONNECT_TIMEOUT_MS = 10_000;
 export const MAX_CONNECT_RETRIES = 5;
-export const DISCOVERY_TIMEOUT_MS = 120_000;
+export const DISCOVERY_TIMEOUT_MS = 30_000;
 export const DISCOVERY_POLL_MS = 2_000;
 
 /** Timeout for GATT service/characteristic enumeration after connecting. */
