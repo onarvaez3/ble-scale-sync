@@ -91,12 +91,19 @@ function initializeAdapter(
       if (!writeChar) return;
 
       const unlockBuf = Buffer.from(adapter.unlockCommand);
+      let unlockWriteCount = 0;
       const sendUnlock = async (): Promise<void> => {
         if (isResolved()) return;
+        unlockWriteCount++;
+        const attempt = unlockWriteCount;
+        bleLog.debug(
+          `Unlock write #${attempt}: ${unlockBuf.length} bytes [${unlockBuf.toString('hex')}] (withResponse=false)`,
+        );
         try {
           await writeChar.write(unlockBuf, false);
+          bleLog.debug(`Unlock write #${attempt} OK`);
         } catch (e: unknown) {
-          if (!isResolved()) bleLog.error(`Unlock write error: ${errMsg(e)}`);
+          if (!isResolved()) bleLog.error(`Unlock write #${attempt} error: ${errMsg(e)}`);
         }
       };
 
@@ -200,13 +207,24 @@ export function waitForRawReading(
   return new Promise<RawReading>((resolve, reject) => {
     let resolved = false;
 
+    let notifyCount = 0;
     const handleNotification = (sourceUuid: string, data: Buffer): void => {
       if (resolved) return;
+      notifyCount++;
+      bleLog.debug(
+        `Notify #${notifyCount} [${sourceUuid.slice(0, 8)}]: ${data.length}B [${data.toString('hex')}]`,
+      );
 
       const reading: ScaleReading | null = adapter.parseCharNotification
         ? adapter.parseCharNotification(sourceUuid, data)
         : adapter.parseNotification(data);
-      if (!reading) return;
+      if (!reading) {
+        bleLog.debug(`Notify #${notifyCount}: no reading parsed`);
+        return;
+      }
+      bleLog.debug(
+        `Notify #${notifyCount}: weight=${reading.weight} impedance=${reading.impedance}`,
+      );
 
       if (weightUnit === 'lbs' && !adapter.normalizesWeight) {
         reading.weight *= LBS_TO_KG;
