@@ -479,14 +479,6 @@ export async function scanAndReadRaw(opts: ScanOptions): Promise<RawReading> {
       );
     }
 
-    // In continuous mode, BlueZ caches the device from a previous cycle.
-    // The cached D-Bus proxy becomes stale after destroy(), causing
-    // "interface not found in proxy object" errors on reconnect.
-    // Removing it forces a fresh discovery + proxy creation.
-    if (targetMac) {
-      await removeDevice(btAdapter, targetMac);
-    }
-
     const discoveryResult = await startDiscoverySafe(btAdapter, bluetooth);
     if (discoveryResult) btAdapter = discoveryResult;
 
@@ -642,10 +634,14 @@ export async function scanAndReadRaw(opts: ScanOptions): Promise<RawReading> {
     }
     return raw;
   } finally {
-    // Always stop discovery before destroying the D-Bus connection to prevent
-    // orphaned BlueZ discovery sessions that cause "Operation already in progress"
-    // on the next scan cycle in continuous mode.
+    // Clean up BlueZ state BEFORE destroying the D-Bus connection.
+    // Order matters: removeDevice must happen while the D-Bus handle is still valid,
+    // otherwise the next cycle starts with a stale cached device that causes
+    // le-connection-abort-by-local errors on reconnect.
     if (btAdapter) {
+      if (targetMac) {
+        await removeDevice(btAdapter, targetMac);
+      }
       try {
         await btAdapter.stopDiscovery();
       } catch {
