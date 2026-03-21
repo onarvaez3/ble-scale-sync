@@ -366,27 +366,30 @@ async function buildCharMapFast(
   const charMap = new Map<string, BleChar>();
   const service = await gatt.getPrimaryService(adapter.serviceUuid!);
 
-  const uuids: string[] = [adapter.charNotifyUuid, adapter.charWriteUuid];
-  if (adapter.altCharNotifyUuid) uuids.push(adapter.altCharNotifyUuid);
-  if (adapter.altCharWriteUuid) uuids.push(adapter.altCharWriteUuid);
-  if (adapter.characteristics) {
-    for (const binding of adapter.characteristics) {
-      if (!uuids.includes(binding.uuid)) uuids.push(binding.uuid);
-    }
-  }
+  // node-ble requires characteristics() to be called before getCharacteristic()
+  // can resolve individual D-Bus objects. We enumerate only this one service
+  // instead of all services, which is the bulk of the time saving.
+  const charUuids = await service.characteristics();
+  bleLog.debug(`Fast charMap: service=${adapter.serviceUuid} chars=[${charUuids.join(', ')}]`);
 
-  for (const uuid of uuids) {
+  const wanted = new Set<string>([
+    normalizeUuid(adapter.charNotifyUuid),
+    normalizeUuid(adapter.charWriteUuid),
+    ...(adapter.altCharNotifyUuid ? [normalizeUuid(adapter.altCharNotifyUuid)] : []),
+    ...(adapter.altCharWriteUuid ? [normalizeUuid(adapter.altCharWriteUuid)] : []),
+    ...(adapter.characteristics?.map((b) => normalizeUuid(b.uuid)) ?? []),
+  ]);
+
+  for (const charUuid of charUuids) {
+    if (!wanted.has(normalizeUuid(charUuid))) continue;
     try {
-      const char = await service.getCharacteristic(uuid);
-      charMap.set(normalizeUuid(uuid), wrapChar(char));
-    } catch {
-      // Characteristic not found — expected for optional alt UUIDs
+      const char = await service.getCharacteristic(charUuid);
+      charMap.set(normalizeUuid(charUuid), wrapChar(char));
+    } catch (e: unknown) {
+      bleLog.debug(`  Char ${charUuid}: error=${errMsg(e)}`);
     }
   }
 
-  bleLog.debug(
-    `Fast charMap: service=${adapter.serviceUuid} chars=[${[...charMap.keys()].join(', ')}]`,
-  );
   return charMap;
 }
 
