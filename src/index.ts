@@ -353,10 +353,6 @@ async function main(): Promise<void> {
   // the cooldown — no extra downtime, and each new reading starts with a
   // clean BlueZ state.
   let bleSession = await createBleSession();
-  const BACKOFF_INITIAL_MS = 5_000;
-  const BACKOFF_MAX_MS = 10_000;
-  let backoffMs = 0; // 0 = no failure yet
-
   try {
     while (!signal.aborted) {
       try {
@@ -377,8 +373,6 @@ async function main(): Promise<void> {
           await runSingleUserCycle(exporters, bleSession);
         }
 
-        backoffMs = 0; // Reset backoff on success
-
         if (signal.aborted) break;
         const cooldown = appConfig.runtime?.scan_cooldown ?? scanCooldownSec;
         log.info(`\nWaiting ${cooldown}s before next scan...`);
@@ -392,10 +386,7 @@ async function main(): Promise<void> {
       } catch (err) {
         if (signal.aborted) break;
 
-        // Exponential backoff: 5s → 10s (cap)
-        backoffMs = backoffMs === 0 ? BACKOFF_INITIAL_MS : Math.min(backoffMs * 2, BACKOFF_MAX_MS);
-        log.info(`No scale found, retrying in ${backoffMs / 1000}s... (${errMsg(err)})`);
-        await abortableSleep(backoffMs, signal).catch(() => {});
+        log.info(`No scale found, retrying... (${errMsg(err)})`);
       }
     }
   } finally {
