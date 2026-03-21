@@ -479,6 +479,12 @@ export async function scanAndReadRaw(opts: ScanOptions): Promise<RawReading> {
       );
     }
 
+    // Remove stale cached device before discovery. BlueZ retains device
+    // objects across connections; a stale proxy causes le-connection-abort-by-local.
+    if (targetMac) {
+      await removeDevice(btAdapter, targetMac);
+    }
+
     const discoveryResult = await startDiscoverySafe(btAdapter, bluetooth);
     if (discoveryResult) btAdapter = discoveryResult;
 

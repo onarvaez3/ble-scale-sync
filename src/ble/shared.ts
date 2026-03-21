@@ -234,6 +234,7 @@ export function waitForRawReading(
 
       if (adapter.isComplete(reading)) {
         resolved = true;
+        clearTimeout(dataTimeout);
         init.cleanup();
         // Clear any \r progress line before logging
         process.stdout.write('\r' + ' '.repeat(80) + '\r');
@@ -255,15 +256,33 @@ export function waitForRawReading(
     // Handle unexpected disconnect
     bleDevice.onDisconnect(() => {
       if (!resolved) {
+        resolved = true;
+        clearTimeout(dataTimeout);
         init.cleanup();
         reject(new Error('Scale disconnected before reading completed'));
       }
     });
 
+    // Safety timeout: if no complete reading within 15s of subscribing,
+    // bail out. Catches silent disconnects (where the event never fires)
+    // and abbreviated measurement cycles with no weight frame.
+    const dataTimeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        init.cleanup();
+        reject(
+          new Error(
+            `No complete reading within 15s (received ${notifyCount} notification(s))`,
+          ),
+        );
+      }
+    }, 15_000);
+
     // Subscribe to notifications and start adapter init.
     // Errors are caught and forwarded to the Promise's reject.
     subscribeAndInit(charMap, adapter, handleNotification, init.start, unsubscribers).catch((e) => {
       if (!resolved) {
+        resolved = true;
         init.cleanup();
         reject(e instanceof Error ? e : new Error(String(e)));
       }
