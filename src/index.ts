@@ -99,7 +99,13 @@ const ac = new AbortController();
 const { signal } = ac;
 let forceExitOnNext = false;
 
-function onSignal(): void {
+process.on('SIGTERM', () => {
+  if (signal.aborted) return;
+  log.info('Shutting down gracefully...');
+  ac.abort();
+});
+
+process.on('SIGINT', () => {
   if (forceExitOnNext) {
     log.info('Force exit.');
     process.exit(1);
@@ -107,10 +113,7 @@ function onSignal(): void {
   forceExitOnNext = true;
   log.info('\nShutting down gracefully... (press again to force exit)');
   ac.abort();
-}
-
-process.on('SIGINT', onSignal);
-process.on('SIGTERM', onSignal);
+});
 
 // ─── SIGHUP config reload ──────────────────────────────────────────────────
 

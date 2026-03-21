@@ -71,6 +71,13 @@ export interface ScaleAdapter {
   readonly unlockIntervalMs: number;
   /** True if parseNotification() already converts any non-kg reading to kg. */
   readonly normalizesWeight?: boolean;
+  /**
+   * The BLE service UUID that contains this adapter's notify/write characteristics.
+   * When provided, the BLE handler uses direct characteristic access instead of
+   * full GATT enumeration, significantly reducing setup time and allowing the
+   * notification subscription to be active before the scale sends its first frame.
+   */
+  readonly serviceUuid?: string;
 
   /**
    * All characteristics this adapter needs (notify, write, read).

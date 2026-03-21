@@ -28,6 +28,7 @@ const CHR_WRITE = uuid16(0x2a11);
  */
 export class EsCs20mAdapter implements ScaleAdapter {
   readonly name = 'ES-CS20M';
+  readonly serviceUuid = '00001a10-0000-1000-8000-00805f9b34fb';
   readonly charNotifyUuid = CHR_NOTIFY;
   readonly charWriteUuid = CHR_WRITE;
   readonly normalizesWeight = true;
