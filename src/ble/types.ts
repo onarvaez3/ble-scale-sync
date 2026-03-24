@@ -17,7 +17,7 @@ export const DISCOVERY_POLL_MS = 2_000;
 export const GATT_DISCOVERY_TIMEOUT_MS = 30_000;
 
 /** Delay after stopping BlueZ discovery to let the radio quiesce before connecting. */
-export const POST_DISCOVERY_QUIESCE_MS = 500;
+export const POST_DISCOVERY_QUIESCE_MS = 100;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

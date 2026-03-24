@@ -579,8 +579,16 @@ export async function scanAndReadRaw(opts: ScanOptions): Promise<RawReading> {
       // Try probe-based matching first: directly accesses the adapter's known
       // service UUID without the ~2s gatt.services() round-trip. Falls back to
       // full service enumeration if no adapter with serviceUuid matches.
-      discoveryGatt = await device.gatt();
-      const probe = await probeMatchAndBuildCharMap(discoveryGatt, adapters);
+      discoveryGatt = await withTimeout(
+        device.gatt(),
+        GATT_DISCOVERY_TIMEOUT_MS,
+        'GATT proxy timed out',
+      );
+      const probe = await withTimeout(
+        probeMatchAndBuildCharMap(discoveryGatt, adapters),
+        GATT_DISCOVERY_TIMEOUT_MS,
+        'GATT probe timed out',
+      );
 
       if (probe) {
         matchedAdapter = probe.adapter;
